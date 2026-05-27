@@ -65,7 +65,9 @@ describe('Property 16: Question 列表保序', () => {
   it('无激活筛选时 getChildren() id 序列等于 bank.questions.map(q => q.id)', () => {
     fc.assert(
       fc.property(arbQuestionBank, (bank) => {
-        const provider = new QuestionListProvider({ debounceMs: 0 });
+        // 显式关闭分类分组，确保 children 直接是 question 序列；
+        // 分组模式下的保序断言在 example test 中以等价的"扁平展开等于原序"形式覆盖。
+        const provider = new QuestionListProvider({ debounceMs: 0, groupByCategory: false });
         const summary: BankSummary = {
           id: 'test-bank-id',
           name: bank.name,

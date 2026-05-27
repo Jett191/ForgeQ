@@ -116,7 +116,10 @@ describe('QuestionListProvider example', () => {
   });
 
   it('有题目时展示所有题目', () => {
-    const provider = new QuestionListProvider({ debounceMs: 0 });
+    // 该用例锚定"扁平模式下 children 直接是 question 序列"的契约。
+    // 分类分组在多 category 下会引入中间 category 层，单独由其它用例覆盖，
+    // 这里显式关闭以保持本断言的语义清晰。
+    const provider = new QuestionListProvider({ debounceMs: 0, groupByCategory: false });
 
     const bank: QuestionBank = {
       name: 'MyBank',

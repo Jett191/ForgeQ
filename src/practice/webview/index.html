@@ -10,38 +10,40 @@
 </head>
 <body>
   <div id="app">
-    <div class="question-header">
-      <h1 id="question-title"></h1>
-      <span id="question-type" class="badge"></span>
-      <span id="question-difficulty" class="badge"></span>
-      <span id="question-category" class="badge"></span>
-    </div>
+    <header class="q-head">
+      <div id="question-meta" class="q-meta"></div>
+      <div class="q-title-row">
+        <h1 id="question-title" class="q-title"></h1>
+        <button id="btn-favorite" class="q-fav" type="button" aria-label="收藏" title="收藏">
+          <span class="fav-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </header>
 
-    <div id="question-content" class="content-area"></div>
+    <article id="question-content" class="md"></article>
 
-    <div id="test-cases" class="test-cases"></div>
+    <section id="test-cases" class="test-cases"></section>
 
-    <div class="controls">
-      <button id="btn-show-answer" class="primary">查看答案</button>
-      <button id="btn-favorite">收藏</button>
-      <div class="mastery-controls">
-        <button id="btn-unlearned" data-mastery="unlearned">未学习</button>
-        <button id="btn-learning" data-mastery="learning">学习中</button>
-        <button id="btn-mastered" data-mastery="mastered">已掌握</button>
-        <button id="btn-not-mastered" data-mastery="not_mastered">未掌握</button>
+    <section id="answer-area" class="answer-area hidden"></section>
+
+    <section id="follow-ups" class="follow-ups"></section>
+
+    <div class="action-bar" role="toolbar" aria-label="题目操作">
+      <button id="btn-show-answer" class="btn primary" type="button">查看答案</button>
+      <div class="segmented" role="radiogroup" aria-label="掌握状态">
+        <button class="seg" type="button" data-mastery="unlearned" role="radio">未学习</button>
+        <button class="seg" type="button" data-mastery="learning" role="radio">学习中</button>
+        <button class="seg" type="button" data-mastery="mastered" role="radio">已掌握</button>
+        <button class="seg" type="button" data-mastery="not_mastered" role="radio">未掌握</button>
+      </div>
+      <span class="action-spacer"></span>
+      <div class="note-links">
+        <button id="link-open-note" class="btn ghost" type="button">打开笔记</button>
+        <button id="link-note-preview" class="btn ghost" type="button">预览笔记</button>
       </div>
     </div>
 
-    <div class="note-links">
-      <a id="link-open-note">在编辑器打开笔记</a>
-      <a id="link-note-preview">Markdown 预览</a>
-    </div>
-
-    <div id="answer-area" class="answer-area hidden"></div>
-
-    <div id="follow-ups" class="follow-ups"></div>
-
-    <p id="status-message" class="status-message"></p>
+    <div id="status-message" class="status-message" role="status" aria-live="polite"></div>
   </div>
 
   <script nonce="{{nonce}}" src="{{scriptUri}}"></script>

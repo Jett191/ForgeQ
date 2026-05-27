@@ -16,7 +16,7 @@
 //   NODE_ENV=production node scripts/build.mjs
 
 import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, copyFile, watch as fsWatch } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
@@ -113,8 +113,38 @@ async function generateSchema() {
   });
 }
 
+/**
+ * Copy webview static assets that esbuild does not bundle (CSS / images / etc.)
+ * from `src/practice/webview/` to `dist/webview/`.
+ *
+ * panel.ts uses `webview.asWebviewUri(... 'dist/webview/styles.css')`, and the
+ * webview's `localResourceRoots` only whitelists `dist/webview/`, so anything
+ * referenced by the rendered HTML must live there. Bundling CSS through esbuild
+ * would change the import semantics for stylesheets, so a plain copy keeps the
+ * pipeline simple and the file watch-friendly.
+ */
+async function copyWebviewAssets() {
+  const assets = ['styles.css'];
+  const srcDir = path.join(projectRoot, 'src', 'practice', 'webview');
+  const outDir = path.join(projectRoot, 'dist', 'webview');
+  await mkdir(outDir, { recursive: true });
+  for (const name of assets) {
+    const src = path.join(srcDir, name);
+    if (!existsSync(src)) continue;
+    const dst = path.join(outDir, name);
+    await copyFile(src, dst);
+    console.log(
+      `[build] copied webview asset: ${path.relative(projectRoot, src)} -> ${path.relative(
+        projectRoot,
+        dst,
+      )}`,
+    );
+  }
+}
+
 async function runOnce() {
   await generateSchema();
+  await copyWebviewAssets();
   const results = [];
   for (const spec of entries) {
     if (!existsSync(spec.entry)) {
@@ -151,6 +181,27 @@ async function runOnce() {
 
 async function runWatch() {
   await generateSchema();
+  await copyWebviewAssets();
+  // Watch styles.css alongside esbuild watchers so theme/styling tweaks
+  // hot-reload without re-running `npm run build`.
+  const cssSrc = path.join(
+    projectRoot,
+    'src',
+    'practice',
+    'webview',
+    'styles.css',
+  );
+  if (existsSync(cssSrc)) {
+    void (async () => {
+      try {
+        for await (const _ of fsWatch(cssSrc)) {
+          await copyWebviewAssets();
+        }
+      } catch {
+        /* ignore: watcher errors are non-fatal in dev */
+      }
+    })();
+  }
   /** @type {esbuild.BuildContext[]} */
   const contexts = [];
   for (const spec of entries) {
