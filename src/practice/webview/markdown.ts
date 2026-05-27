@@ -23,7 +23,13 @@
  * 内的 `<` `>` `&` 原样展示。
  *
  * 该模块不依赖 DOM；调用方拿到字符串后赋值给 `innerHTML`。
+ *
+ * 代码块的语法着色委托给 `highlight.ts`：在围栏代码块渲染处调用
+ * `highlight(code, lang)` 直接拿到已转义且包了 `<span class="hl-*">` 的 HTML，
+ * 因此本文件对代码块内容不再二次 escapeHtml。
  */
+
+import { highlight } from './highlight.js';
 
 /** 把字符串转义为安全的 HTML 文本节点内容。 */
 export function escapeHtml(s: string): string {
@@ -100,7 +106,7 @@ function blockRender(src: string): string {
       if (i < lines.length) i++;
       const langClass = lang ? ` class="lang-${escapeAttr(lang)}"` : '';
       out.push(
-        `<pre><code${langClass}>${escapeHtml(codeLines.join('\n'))}</code></pre>`,
+        `<pre><code${langClass}>${highlight(codeLines.join('\n'), lang)}</code></pre>`,
       );
       continue;
     }

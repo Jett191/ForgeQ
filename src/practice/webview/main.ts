@@ -7,14 +7,15 @@
  *   - .q-head（meta 徽章 + 标题 + 收藏按钮）
  *   - #question-content.md（题面 markdown 渲染）
  *   - #test-cases（仅代码题）
- *   - .answer-area（点击"查看答案"后填充并显示）
- *   - .follow-ups（问答题追问）
- *   - .action-bar（主按钮 + Mastery + 笔记链接）
+ *   - .answer-toggle > #btn-show-answer（点击展开答案；展开后整体隐藏）
+ *   - #answer-area（含 #btn-collapse-answer 圆形 ↑ 按钮 + #answer-content）
+ *   - #follow-ups（问答题追问）
  *
  * 渲染策略：题面 / 详细解析 / 简答 / 追问答案均走 `renderMarkdown`，
- * 其余短字符串字段走 `escapeHtml`。
+ * 其余短字符串字段走 `escapeHtml`；代码题参考答案走 `highlight()` 着色。
  */
 
+import { highlight } from './highlight.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
 
 declare function acquireVsCodeApi(): {
@@ -91,6 +92,25 @@ function difficultyClass(d: string): string {
   }
 }
 
+/**
+ * 重置答案区到"未展开"状态。
+ *
+ * 注意只清空 `#answer-content` 而不是 `#answer-area`，因为后者还包含
+ * 收起按钮 `#btn-collapse-answer`，整体清空会丢失按钮。
+ */
+function hideAnswerSection(): void {
+  const area = $('answer-area');
+  if (area) area.classList.add('hidden');
+  const content = $('answer-content');
+  if (content) content.innerHTML = '';
+  const followUpsEl = $('follow-ups');
+  if (followUpsEl) followUpsEl.innerHTML = '';
+  const toggle = document.querySelector('.answer-toggle');
+  if (toggle) (toggle as HTMLElement).hidden = false;
+  const showBtn = $('btn-show-answer');
+  if (showBtn) showBtn.removeAttribute('hidden');
+}
+
 function renderQuestion(question: Question): void {
   currentQuestion = question;
 
@@ -164,107 +184,102 @@ function renderQuestion(question: Question): void {
     }
   }
 
-  // 重置答案区与追问区，避免切题时残留上一题状态
-  const answerEl = $('answer-area');
-  if (answerEl) {
-    answerEl.classList.add('hidden');
-    answerEl.innerHTML = '';
-  }
-  const followUpsEl = $('follow-ups');
-  if (followUpsEl) followUpsEl.innerHTML = '';
-  const showBtn = $('btn-show-answer');
-  if (showBtn) showBtn.removeAttribute('hidden');
+  // 切题时重置答案区到未展开状态
+  hideAnswerSection();
 }
 
+/**
+ * 学习状态相关 UI 更新。
+ *
+ * 新版 UI 已移除 mastery 4 段选择器，只保留标题栏右侧的收藏星按钮，
+ * 因此本函数只更新 `#btn-favorite` 的 active 状态与 aria 文案。
+ * 入参类型仍保留完整 LearningState，便于扩展端协议不变。
+ */
 function updateLearningUI(learning: LearningState): void {
-  // 收藏按钮
   const favBtn = $('btn-favorite');
-  if (favBtn) {
-    favBtn.classList.toggle('active', learning.favoriteFlag);
-    favBtn.setAttribute(
-      'aria-label',
-      learning.favoriteFlag ? '取消收藏' : '收藏',
-    );
-    favBtn.setAttribute('title', learning.favoriteFlag ? '取消收藏' : '收藏');
-  }
-
-  // Mastery 4 段式
-  const masteryValues = ['unlearned', 'learning', 'mastered', 'not_mastered'];
-  for (const m of masteryValues) {
-    const btn = document.querySelector(
-      `[data-mastery="${m}"]`,
-    ) as HTMLElement | null;
-    if (!btn) continue;
-    btn.classList.toggle('active', m === learning.mastery);
-  }
+  if (!favBtn) return;
+  favBtn.classList.toggle('active', learning.favoriteFlag);
+  favBtn.setAttribute(
+    'aria-label',
+    learning.favoriteFlag ? '取消收藏' : '收藏',
+  );
+  favBtn.setAttribute('title', learning.favoriteFlag ? '取消收藏' : '收藏');
 }
 
 interface AnswerPayload {
   questionType: 'code' | 'qa';
   answer:
-    | { kind: 'reference'; code?: string; briefAnswer?: string; detailedAnswer?: string; followUps?: Array<{ question: string; answer?: string }> }
+    | {
+        kind: 'reference';
+        code?: string;
+        briefAnswer?: string;
+        detailedAnswer?: string;
+        followUps?: Array<{ question: string; answer?: string }>;
+      }
     | { kind: 'none'; hint: string };
 }
 
 function showAnswer(payload: AnswerPayload): void {
   const area = $('answer-area');
-  if (!area) return;
+  const content = $('answer-content');
+  if (!area || !content) return;
+
   area.classList.remove('hidden');
 
   const ans = payload.answer;
   if (ans.kind === 'none') {
-    area.innerHTML = `<span class="answer-label">参考答案</span><p>${escapeHtml(
+    content.innerHTML = `<span class="answer-label">参考答案</span><p>${escapeHtml(
       ans.hint ?? '该题暂无参考答案',
     )}</p>`;
-    const btn = $('btn-show-answer');
-    if (btn) btn.setAttribute('hidden', '');
-    return;
-  }
-
-  let html = '<span class="answer-label">参考答案</span>';
-
-  if (payload.questionType === 'code') {
-    const lang =
-      currentQuestion && currentQuestion.type === 'code'
-        ? currentQuestion.language ?? ''
-        : '';
-    const langClass = lang ? ` class="lang-${escapeHtml(lang)}"` : '';
-    html += `<pre><code${langClass}>${escapeHtml(ans.code ?? '')}</code></pre>`;
   } else {
-    if (ans.briefAnswer) {
-      html += `<div class="brief md">${renderMarkdown(ans.briefAnswer)}</div>`;
-    }
-    if (ans.detailedAnswer) {
-      html += `<div class="detailed md"><h3>详细解析</h3>${renderMarkdown(ans.detailedAnswer)}</div>`;
-    }
-  }
-
-  area.innerHTML = html;
-
-  // 追问（仅 QA 题）
-  const followUpsEl = $('follow-ups');
-  if (
-    followUpsEl &&
-    payload.questionType === 'qa' &&
-    Array.isArray(ans.followUps) &&
-    ans.followUps.length > 0
-  ) {
-    let fuHtml = '<h2 class="followups-title">追问</h2>';
-    for (const fu of ans.followUps) {
-      fuHtml += '<div class="follow-up">';
-      fuHtml += `<div class="follow-up-q">${escapeHtml(fu.question)}</div>`;
-      if (fu.answer) {
-        fuHtml += `<div class="follow-up-a md">${renderMarkdown(fu.answer)}</div>`;
+    let html = '<span class="answer-label">参考答案</span>';
+    if (payload.questionType === 'code') {
+      const lang =
+        currentQuestion && currentQuestion.type === 'code'
+          ? currentQuestion.language ?? ''
+          : '';
+      const langClass = lang ? ` class="lang-${escapeHtml(lang)}"` : '';
+      html += `<pre><code${langClass}>${highlight(ans.code ?? '', lang)}</code></pre>`;
+    } else {
+      if (ans.briefAnswer) {
+        html += `<div class="brief md">${renderMarkdown(ans.briefAnswer)}</div>`;
       }
-      fuHtml += '</div>';
+      if (ans.detailedAnswer) {
+        html += `<div class="detailed md"><h3>详细解析</h3>${renderMarkdown(ans.detailedAnswer)}</div>`;
+      }
     }
-    followUpsEl.innerHTML = fuHtml;
-  } else if (followUpsEl) {
-    followUpsEl.innerHTML = '';
+    content.innerHTML = html;
   }
 
-  const btn = $('btn-show-answer');
-  if (btn) btn.setAttribute('hidden', '');
+  // 追问（仅 QA 题且 reference）
+  const followUpsEl = $('follow-ups');
+  if (followUpsEl) {
+    if (
+      ans.kind === 'reference' &&
+      payload.questionType === 'qa' &&
+      Array.isArray(ans.followUps) &&
+      ans.followUps.length > 0
+    ) {
+      let fuHtml = '<h2 class="followups-title">追问</h2>';
+      for (const fu of ans.followUps) {
+        fuHtml += '<div class="follow-up">';
+        fuHtml += `<div class="follow-up-q">${escapeHtml(fu.question)}</div>`;
+        if (fu.answer) {
+          fuHtml += `<div class="follow-up-a md">${renderMarkdown(fu.answer)}</div>`;
+        }
+        fuHtml += '</div>';
+      }
+      followUpsEl.innerHTML = fuHtml;
+    } else {
+      followUpsEl.innerHTML = '';
+    }
+  }
+
+  // 切换 toggle 区到隐藏状态（同时把 show 按钮 hide，以备将来重新显示）
+  const toggle = document.querySelector('.answer-toggle');
+  if (toggle) (toggle as HTMLElement).hidden = true;
+  const showBtn = $('btn-show-answer');
+  if (showBtn) showBtn.setAttribute('hidden', '');
 }
 
 let statusTimer: ReturnType<typeof setTimeout> | undefined;
@@ -285,25 +300,12 @@ document.addEventListener('DOMContentLoaded', () => {
     vscode.postMessage({ type: 'requestAnswer' });
   });
 
+  $('btn-collapse-answer')?.addEventListener('click', () => {
+    hideAnswerSection();
+  });
+
   $('btn-favorite')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'toggleFavorite' });
-  });
-
-  document.querySelectorAll('[data-mastery]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const value = (btn as HTMLElement).dataset['mastery'];
-      if (value) vscode.postMessage({ type: 'setMastery', value });
-    });
-  });
-
-  $('link-open-note')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    vscode.postMessage({ type: 'openNativeEditor', target: 'note' });
-  });
-
-  $('link-note-preview')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    vscode.postMessage({ type: 'requestNotePreview' });
   });
 
   vscode.postMessage({ type: 'ready' });
@@ -326,10 +328,6 @@ window.addEventListener('message', (event) => {
     case 'refreshLearning': {
       const learning = msg.payload as LearningState;
       if (learning) updateLearningUI(learning);
-      break;
-    }
-    case 'masteryAck': {
-      if (!msg.ok) showStatus(`掌握状态更新失败: ${msg.reason ?? '未知错误'}`);
       break;
     }
     case 'favoriteAck': {
