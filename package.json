@@ -21,6 +21,7 @@
     "questions",
     "review"
   ],
+  "icon": "media/icon.png",
   "main": "./dist/extension.js",
   "activationEvents": [
     "onView:frontendInterview.questionList",
