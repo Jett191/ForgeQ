@@ -1,0 +1,190 @@
+{
+  "name": "frontend-interview-practice",
+  "displayName": "Frontend Interview Practice",
+  "description": "在 VS Code 内完成前端面试题的导入、浏览、刷题与复习",
+  "version": "0.0.1",
+  "publisher": "frontend-interview-practice",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "Education",
+    "Other"
+  ],
+  "keywords": [
+    "frontend",
+    "interview",
+    "practice",
+    "questions",
+    "review"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:frontendInterview.questionList",
+    "onView:frontendInterview.review",
+    "onCommand:frontendInterview.import",
+    "onCommand:frontendInterview.openQuestion",
+    "onCommand:frontendInterview.switchBank",
+    "onCommand:frontendInterview.removeBank",
+    "onCommand:frontendInterview.review.unmastered",
+    "onCommand:frontendInterview.review.favorite",
+    "onCommand:frontendInterview.review.wrong"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "frontendInterview",
+          "title": "Frontend Interview",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "frontendInterview": [
+        {
+          "id": "frontendInterview.questionList",
+          "name": "Questions",
+          "contextualTitle": "Frontend Interview"
+        },
+        {
+          "id": "frontendInterview.review",
+          "name": "Review",
+          "contextualTitle": "Frontend Interview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "frontendInterview.import",
+        "title": "Import Question Bank",
+        "category": "Frontend Interview",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "frontendInterview.openQuestion",
+        "title": "Open Question",
+        "category": "Frontend Interview"
+      },
+      {
+        "command": "frontendInterview.switchBank",
+        "title": "Switch Question Bank",
+        "category": "Frontend Interview",
+        "icon": "$(repo)"
+      },
+      {
+        "command": "frontendInterview.removeBank",
+        "title": "Remove Question Bank",
+        "category": "Frontend Interview",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "frontendInterview.review.unmastered",
+        "title": "Review: Unmastered",
+        "category": "Frontend Interview",
+        "icon": "$(question)"
+      },
+      {
+        "command": "frontendInterview.review.favorite",
+        "title": "Review: Favorites",
+        "category": "Frontend Interview",
+        "icon": "$(star-full)"
+      },
+      {
+        "command": "frontendInterview.review.wrong",
+        "title": "Review: Wrong Answers",
+        "category": "Frontend Interview",
+        "icon": "$(error)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "frontendInterview.import"
+        },
+        {
+          "command": "frontendInterview.openQuestion",
+          "when": "false"
+        },
+        {
+          "command": "frontendInterview.switchBank"
+        },
+        {
+          "command": "frontendInterview.removeBank"
+        },
+        {
+          "command": "frontendInterview.review.unmastered"
+        },
+        {
+          "command": "frontendInterview.review.favorite"
+        },
+        {
+          "command": "frontendInterview.review.wrong"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "frontendInterview.import",
+          "when": "view == frontendInterview.questionList",
+          "group": "navigation@1"
+        },
+        {
+          "command": "frontendInterview.switchBank",
+          "when": "view == frontendInterview.questionList",
+          "group": "navigation@2"
+        },
+        {
+          "command": "frontendInterview.removeBank",
+          "when": "view == frontendInterview.questionList",
+          "group": "navigation@3"
+        },
+        {
+          "command": "frontendInterview.review.unmastered",
+          "when": "view == frontendInterview.review",
+          "group": "navigation@1"
+        },
+        {
+          "command": "frontendInterview.review.favorite",
+          "when": "view == frontendInterview.review",
+          "group": "navigation@2"
+        },
+        {
+          "command": "frontendInterview.review.wrong",
+          "when": "view == frontendInterview.review",
+          "group": "navigation@3"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "generate:schema": "node scripts/generateSchema.mjs",
+    "check:schema": "node scripts/generateSchema.mjs --check",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:bench": "vitest bench --run --config vitest.config.ts",
+    "test:integration": "node scripts/runIntegrationTests.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "package": "node scripts/package.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/uuid": "^10.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.24.0",
+    "fast-check": "^3.23.0",
+    "memfs": "^4.14.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
