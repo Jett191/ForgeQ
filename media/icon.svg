@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <!-- Background rounded square -->
+  <rect x="4" y="4" width="120" height="120" rx="24" fill="#2B2D42"/>
+  
+  <!-- Letter F -->
+  <path d="M40 32 L88 32 L88 44 L54 44 L54 58 L82 58 L82 70 L54 70 L54 96" 
+        stroke="#7C9DFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
