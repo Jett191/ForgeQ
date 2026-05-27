@@ -35,8 +35,11 @@ vi.mock('vscode', () => {
         createWebviewPanelCalls.push({ viewType, title, column, opts });
         return {
           webview: {
+            html: '',
             onDidReceiveMessage: vi.fn(),
             postMessage: mockPostMessage,
+            asWebviewUri: (uri: unknown) => uri,
+            cspSource: 'https://file+.vscode-resource.vscode-cdn.net',
           },
           onDidDispose: vi.fn(),
           reveal: vi.fn(),

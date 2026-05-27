@@ -6,6 +6,8 @@
  * Validates: Requirements 5.1, 5.5, 6.1, 6.6, 7.1, 8.1, 9.1
  */
 
+import * as crypto from 'node:crypto';
+
 import * as vscode from 'vscode';
 
 import type { LearningState } from '../../types/learning.js';
@@ -90,6 +92,74 @@ export class PracticePanel {
     );
 
     this.instances.set(qid, { panel, qid, question, disposables });
+
+    // Set webview HTML content
+    panel.webview.html = this.getWebviewHtml(panel.webview);
+  }
+
+  /**
+   * Generate the HTML content for the webview panel.
+   */
+  private getWebviewHtml(webview: vscode.Webview): string {
+    const nonce = crypto.randomBytes(16).toString('hex');
+
+    const stylesUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.deps.extensionUri, 'src', 'practice', 'webview', 'styles.css'),
+    );
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.deps.extensionUri, 'dist', 'webview', 'main.js'),
+    );
+    const cspSource = webview.cspSource;
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <link rel="stylesheet" href="${stylesUri}" />
+  <title>Practice</title>
+</head>
+<body>
+  <div id="app">
+    <div class="question-header">
+      <h1 id="question-title"></h1>
+      <span id="question-type" class="badge"></span>
+      <span id="question-difficulty" class="badge"></span>
+      <span id="question-category" class="badge"></span>
+    </div>
+
+    <div id="question-content" class="content-area"></div>
+
+    <div id="test-cases" class="test-cases"></div>
+
+    <div class="controls">
+      <button id="btn-show-answer" class="primary">查看答案</button>
+      <button id="btn-favorite">收藏</button>
+      <div class="mastery-controls">
+        <button id="btn-unlearned" data-mastery="unlearned">未学习</button>
+        <button id="btn-learning" data-mastery="learning">学习中</button>
+        <button id="btn-mastered" data-mastery="mastered">已掌握</button>
+        <button id="btn-not-mastered" data-mastery="not_mastered">未掌握</button>
+      </div>
+    </div>
+
+    <div class="note-links">
+      <a id="link-open-note">在编辑器打开笔记</a>
+      <a id="link-note-preview">Markdown 预览</a>
+    </div>
+
+    <div id="answer-area" class="answer-area hidden"></div>
+
+    <div id="follow-ups" class="follow-ups"></div>
+
+    <p id="status-message" class="status-message"></p>
+  </div>
+
+  <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
   }
 
   /**

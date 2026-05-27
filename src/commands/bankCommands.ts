@@ -10,13 +10,14 @@
 import * as vscode from 'vscode';
 
 import type { BankRegistry } from '../storage/bankRegistry.js';
-import type { InMemoryState } from '../storage/storage.js';
+import type { InMemoryState, Storage } from '../storage/storage.js';
 
 /**
  * 切换当前激活题库。
  */
 export async function switchBank(
   registry: BankRegistry,
+  storage: Storage,
   state: InMemoryState,
   listProvider: { refresh(): void },
   reviewProvider: { refresh(): void },
@@ -40,6 +41,16 @@ export async function switchBank(
   if (!selected) return;
 
   await registry.switchTo(selected.bankId);
+
+  // Reload state.currentBank with the new bank's data
+  try {
+    const bank = await storage.banks.readBank(selected.bankId);
+    const learning = await storage.userData.readLearningMap(selected.bankId);
+    state.currentBank = { bankId: selected.bankId, bank, learning };
+  } catch {
+    delete state.currentBank;
+  }
+
   listProvider.refresh();
   reviewProvider.refresh();
 }
@@ -51,6 +62,7 @@ export async function removeBank(
   registry: BankRegistry,
   state: InMemoryState,
   listProvider: { refresh(): void },
+  reviewProvider: { refresh(): void },
 ): Promise<void> {
   const banks = registry.list();
   if (banks.length === 0) {
@@ -79,5 +91,12 @@ export async function removeBank(
   if (confirm !== '确认') return;
 
   await registry.remove(selected.bankId);
+
+  // Clear state.currentBank if the removed bank was active
+  if (state.currentBank?.bankId === selected.bankId) {
+    delete state.currentBank;
+  }
+
   listProvider.refresh();
+  reviewProvider.refresh();
 }

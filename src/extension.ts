@@ -56,12 +56,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   const switchBankCmd = vscode.commands.registerCommand(
     'frontendInterview.switchBank',
-    () => switchBank(registry, state, listProvider, reviewProvider),
+    () => switchBank(registry, storage, state, listProvider, reviewProvider),
   );
 
   const removeBankCmd = vscode.commands.registerCommand(
     'frontendInterview.removeBank',
-    () => removeBank(registry, state, listProvider),
+    () => removeBank(registry, state, listProvider, reviewProvider),
   );
 
   const reviewUnmasteredCmd = vscode.commands.registerCommand(

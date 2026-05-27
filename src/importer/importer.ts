@@ -126,6 +126,18 @@ export async function importBank(
     return;
   }
 
+  // Reload state.currentBank with the newly installed bank
+  try {
+    const meta = storage.getCurrentMeta();
+    if (meta.currentBankId) {
+      const loadedBank = await storage.banks.readBank(meta.currentBankId);
+      const learning = await storage.userData.readLearningMap(meta.currentBankId);
+      state.currentBank = { bankId: meta.currentBankId, bank: loadedBank, learning };
+    }
+  } catch {
+    // Non-fatal: state will be stale but UI will still refresh
+  }
+
   // Step 8: 成功提示 + 刷新列表
   await vscode.window.showInformationMessage(
     `导入成功！共 ${bank.questions.length} 道题目。`,
