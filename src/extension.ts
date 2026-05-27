@@ -1,18 +1,105 @@
-// Minimal entry point stub for the Frontend Interview Practice VS Code extension.
-//
-// Real activation wiring lives in task 20 (Activation 装配); this stub exists so
-// `scripts/build.mjs` has a valid entry to bundle into `dist/extension.js`,
-// satisfying the verification for task 1.4.
-//
-// `vscode` is the host runtime API; we only import its types here to avoid
-// pulling the module at bundle time (it is marked external in build.mjs).
+/**
+ * Extension 激活入口（Task 20）。
+ *
+ * `activate` 初始化 Storage、注册命令与 TreeDataProvider，启动异步清理。
+ * `deactivate` 由 VS Code 在扩展卸载时调用。
+ *
+ * Validates: Requirements 2.1, 3.1, 5.1, 10.1, 11.1, 11.2
+ */
 
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
 
-export function activate(_context: vscode.ExtensionContext): void {
-  // Intentionally empty. Wiring is added in later tasks.
+import { removeBank, switchBank } from './commands/bankCommands.js';
+import { importBank } from './importer/importer.js';
+import { PracticeController } from './practice/practiceController.js';
+import { BankRegistry } from './storage/bankRegistry.js';
+import { Storage } from './storage/storage.js';
+import { QuestionListProvider } from './views/questionListProvider.js';
+import { ReviewProvider } from './views/reviewProvider.js';
+
+export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
+  // 1. Storage 初始化
+  const storage = await Storage.create(ctx);
+  const state = await storage.bootstrap();
+
+  // 2. 实例化核心组件
+  const registry = new BankRegistry(storage, ctx.globalState);
+  const listProvider = new QuestionListProvider();
+  const reviewProvider = new ReviewProvider();
+  const practiceController = new PracticeController(ctx, storage, state);
+
+  // 3. 初始数据注入
+  if (state.currentBank) {
+    const summary = registry.current();
+    listProvider.setBank(state.currentBank.bank, summary, state.currentBank.learning);
+    reviewProvider.setBank(state.currentBank.bank, state.currentBank.learning);
+  }
+
+  // 4. 注册 TreeDataProvider
+  const listView = vscode.window.createTreeView('frontendInterview.questionList', {
+    treeDataProvider: listProvider,
+  });
+  const reviewView = vscode.window.createTreeView('frontendInterview.review', {
+    treeDataProvider: reviewProvider,
+  });
+
+  // 5. 注册命令
+  const importCmd = vscode.commands.registerCommand(
+    'frontendInterview.import',
+    () => importBank(ctx, storage, registry, state, listProvider),
+  );
+
+  const openQuestionCmd = vscode.commands.registerCommand(
+    'frontendInterview.openQuestion',
+    (qid: string) => practiceController.open(qid),
+  );
+
+  const switchBankCmd = vscode.commands.registerCommand(
+    'frontendInterview.switchBank',
+    () => switchBank(registry, state, listProvider, reviewProvider),
+  );
+
+  const removeBankCmd = vscode.commands.registerCommand(
+    'frontendInterview.removeBank',
+    () => removeBank(registry, state, listProvider),
+  );
+
+  const reviewUnmasteredCmd = vscode.commands.registerCommand(
+    'frontendInterview.review.unmastered',
+    () => { reviewProvider.enter('unmastered'); },
+  );
+
+  const reviewFavoriteCmd = vscode.commands.registerCommand(
+    'frontendInterview.review.favorite',
+    () => { reviewProvider.enter('favorite'); },
+  );
+
+  const reviewWrongCmd = vscode.commands.registerCommand(
+    'frontendInterview.review.wrong',
+    () => { reviewProvider.enter('wrong'); },
+  );
+
+  // 6. Push to subscriptions
+  ctx.subscriptions.push(
+    listView,
+    reviewView,
+    importCmd,
+    openQuestionCmd,
+    switchBankCmd,
+    removeBankCmd,
+    reviewUnmasteredCmd,
+    reviewFavoriteCmd,
+    reviewWrongCmd,
+    { dispose: () => practiceController.dispose() },
+  );
+
+  // 7. Async trash purge (non-blocking)
+  const sevenDays = 7 * 24 * 3600 * 1000;
+  void storage.trash.purge({ olderThanMs: sevenDays }).catch(() => {
+    // Non-fatal; ignore purge failure at startup.
+  });
 }
 
 export function deactivate(): void {
-  // Intentionally empty. Wiring is added in later tasks.
+  // Cleanup handled by subscription disposal.
 }

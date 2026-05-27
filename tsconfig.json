@@ -34,6 +34,7 @@
     "test",
     "**/*.test.ts",
     "**/*.bench.ts",
-    "scripts"
+    "scripts",
+    "src/practice/webview/main.ts"
   ]
 }
