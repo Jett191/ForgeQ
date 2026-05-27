@@ -31,7 +31,12 @@
     "onCommand:frontendInterview.removeBank",
     "onCommand:frontendInterview.review.unmastered",
     "onCommand:frontendInterview.review.favorite",
-    "onCommand:frontendInterview.review.wrong"
+    "onCommand:frontendInterview.review.wrong",
+    "onCommand:frontendInterview.filter.byType",
+    "onCommand:frontendInterview.filter.byCategory",
+    "onCommand:frontendInterview.filter.byDifficulty",
+    "onCommand:frontendInterview.filter.clear",
+    "onCommand:frontendInterview.toggleGroupByCategory"
   ],
   "contributes": {
     "viewsContainers": {
@@ -98,6 +103,36 @@
         "title": "Review: Wrong Answers",
         "category": "Frontend Interview",
         "icon": "$(error)"
+      },
+      {
+        "command": "frontendInterview.filter.byType",
+        "title": "筛选: 题型",
+        "category": "Frontend Interview",
+        "icon": "$(symbol-class)"
+      },
+      {
+        "command": "frontendInterview.filter.byCategory",
+        "title": "筛选: 分类",
+        "category": "Frontend Interview",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "frontendInterview.filter.byDifficulty",
+        "title": "筛选: 难度",
+        "category": "Frontend Interview",
+        "icon": "$(flame)"
+      },
+      {
+        "command": "frontendInterview.filter.clear",
+        "title": "清除筛选",
+        "category": "Frontend Interview",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "frontendInterview.toggleGroupByCategory",
+        "title": "切换分类分组",
+        "category": "Frontend Interview",
+        "icon": "$(group-by-ref-type)"
       }
     ],
     "menus": {
@@ -123,23 +158,63 @@
         },
         {
           "command": "frontendInterview.review.wrong"
+        },
+        {
+          "command": "frontendInterview.filter.byType"
+        },
+        {
+          "command": "frontendInterview.filter.byCategory"
+        },
+        {
+          "command": "frontendInterview.filter.byDifficulty"
+        },
+        {
+          "command": "frontendInterview.filter.clear"
+        },
+        {
+          "command": "frontendInterview.toggleGroupByCategory"
         }
       ],
       "view/title": [
         {
-          "command": "frontendInterview.import",
+          "command": "frontendInterview.filter.byType",
           "when": "view == frontendInterview.questionList",
           "group": "navigation@1"
         },
         {
-          "command": "frontendInterview.switchBank",
+          "command": "frontendInterview.filter.byCategory",
           "when": "view == frontendInterview.questionList",
           "group": "navigation@2"
         },
         {
-          "command": "frontendInterview.removeBank",
+          "command": "frontendInterview.filter.byDifficulty",
           "when": "view == frontendInterview.questionList",
           "group": "navigation@3"
+        },
+        {
+          "command": "frontendInterview.filter.clear",
+          "when": "view == frontendInterview.questionList",
+          "group": "navigation@4"
+        },
+        {
+          "command": "frontendInterview.toggleGroupByCategory",
+          "when": "view == frontendInterview.questionList",
+          "group": "navigation@5"
+        },
+        {
+          "command": "frontendInterview.import",
+          "when": "view == frontendInterview.questionList",
+          "group": "1_bank@1"
+        },
+        {
+          "command": "frontendInterview.switchBank",
+          "when": "view == frontendInterview.questionList",
+          "group": "1_bank@2"
+        },
+        {
+          "command": "frontendInterview.removeBank",
+          "when": "view == frontendInterview.questionList",
+          "group": "1_bank@3"
         },
         {
           "command": "frontendInterview.review.unmastered",

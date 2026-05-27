@@ -10,6 +10,13 @@
 import * as vscode from 'vscode';
 
 import { removeBank, switchBank } from './commands/bankCommands.js';
+import {
+  clearFilters,
+  filterByCategory,
+  filterByDifficulty,
+  filterByType,
+  toggleGroupByCategory,
+} from './commands/filterCommands.js';
 import { importBank } from './importer/importer.js';
 import { PracticeController } from './practice/practiceController.js';
 import { BankRegistry } from './storage/bankRegistry.js';
@@ -79,6 +86,28 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     () => { reviewProvider.enter('wrong'); },
   );
 
+  // Filter commands (题目列表筛选与分组)
+  const filterByTypeCmd = vscode.commands.registerCommand(
+    'frontendInterview.filter.byType',
+    () => filterByType(listProvider),
+  );
+  const filterByCategoryCmd = vscode.commands.registerCommand(
+    'frontendInterview.filter.byCategory',
+    () => filterByCategory(listProvider),
+  );
+  const filterByDifficultyCmd = vscode.commands.registerCommand(
+    'frontendInterview.filter.byDifficulty',
+    () => filterByDifficulty(listProvider),
+  );
+  const clearFiltersCmd = vscode.commands.registerCommand(
+    'frontendInterview.filter.clear',
+    () => clearFilters(listProvider),
+  );
+  const toggleGroupCmd = vscode.commands.registerCommand(
+    'frontendInterview.toggleGroupByCategory',
+    () => toggleGroupByCategory(listProvider),
+  );
+
   // 6. Push to subscriptions
   ctx.subscriptions.push(
     listView,
@@ -90,6 +119,11 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     reviewUnmasteredCmd,
     reviewFavoriteCmd,
     reviewWrongCmd,
+    filterByTypeCmd,
+    filterByCategoryCmd,
+    filterByDifficultyCmd,
+    clearFiltersCmd,
+    toggleGroupCmd,
     { dispose: () => practiceController.dispose() },
   );
 
