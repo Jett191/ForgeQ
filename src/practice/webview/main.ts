@@ -105,10 +105,60 @@ function hideAnswerSection(): void {
   if (content) content.innerHTML = '';
   const followUpsEl = $('follow-ups');
   if (followUpsEl) followUpsEl.innerHTML = '';
-  const toggle = document.querySelector('.answer-toggle');
-  if (toggle) (toggle as HTMLElement).hidden = false;
+  // mastery-fab 在答案展开时被移到 .answer-actions，这里要把它搬回到 .answer-toggle
+  // 顶部位置；这样未展开状态下学习状态按钮始终在 "查看答案" 行的右侧。
+  moveMasteryToToggle();
+  const toggle = $('answer-toggle');
+  if (toggle) toggle.hidden = false;
   const showBtn = $('btn-show-answer');
   if (showBtn) showBtn.removeAttribute('hidden');
+  hideMasteryOptions();
+}
+
+/**
+ * 把 #mastery-fab 移到答案展开时的容器（.answer-actions 内、收起按钮左边）。
+ *
+ * 用 DOM 移动而不是双份 DOM 实例，避免按钮"展开/选中"状态在两处不同步。
+ */
+function moveMasteryToAnswer(): void {
+  const fab = $('mastery-fab');
+  const actions = document.querySelector('.answer-actions');
+  const collapse = $('btn-collapse-answer');
+  if (!fab || !actions || !collapse) return;
+  if (fab.parentElement === actions) return;
+  actions.insertBefore(fab, collapse);
+}
+
+/** 把 #mastery-fab 移回未展开状态的容器（.answer-toggle 内、查看答案按钮右边）。 */
+function moveMasteryToToggle(): void {
+  const fab = $('mastery-fab');
+  const toggle = $('answer-toggle');
+  if (!fab || !toggle) return;
+  if (fab.parentElement === toggle) return;
+  toggle.appendChild(fab);
+}
+
+/** 关闭学习状态浮动选项菜单。 */
+function hideMasteryOptions(): void {
+  const opts = document.querySelector('.mastery-options') as HTMLElement | null;
+  if (opts) opts.hidden = true;
+  const trigger = $('btn-mastery');
+  if (trigger) trigger.setAttribute('aria-expanded', 'false');
+}
+
+/** 把 mastery 值映射成主按钮中央显示的字符。 */
+function masteryIcon(m: string): string {
+  switch (m) {
+    case 'mastered':
+      return '✓';
+    case 'not_mastered':
+      return '✗';
+    case 'learning':
+      return '◔';
+    case 'unlearned':
+    default:
+      return '○';
+  }
 }
 
 function renderQuestion(question: Question): void {
@@ -191,19 +241,44 @@ function renderQuestion(question: Question): void {
 /**
  * 学习状态相关 UI 更新。
  *
- * 新版 UI 已移除 mastery 4 段选择器，只保留标题栏右侧的收藏星按钮，
- * 因此本函数只更新 `#btn-favorite` 的 active 状态与 aria 文案。
- * 入参类型仍保留完整 LearningState，便于扩展端协议不变。
+ * 标题栏右侧的收藏星按钮 + 答案 toggle 行右侧的学习状态浮动按钮组：
+ *  - 收藏：active class + aria 文案；
+ *  - 学习状态主按钮：is-${mastery} class（决定边框/前景色）+ 中心字符更新；
+ *  - 4 个选项按钮：当前选中态加 .active 高亮（颜色由 mastery 类型决定）。
+ *
+ * 入参类型仍保留完整 LearningState，扩展端协议不变。
  */
 function updateLearningUI(learning: LearningState): void {
   const favBtn = $('btn-favorite');
-  if (!favBtn) return;
-  favBtn.classList.toggle('active', learning.favoriteFlag);
-  favBtn.setAttribute(
-    'aria-label',
-    learning.favoriteFlag ? '取消收藏' : '收藏',
-  );
-  favBtn.setAttribute('title', learning.favoriteFlag ? '取消收藏' : '收藏');
+  if (favBtn) {
+    favBtn.classList.toggle('active', learning.favoriteFlag);
+    favBtn.setAttribute(
+      'aria-label',
+      learning.favoriteFlag ? '取消收藏' : '收藏',
+    );
+    favBtn.setAttribute('title', learning.favoriteFlag ? '取消收藏' : '收藏');
+  }
+
+  // 4 个选项按钮的 active class
+  const masteryValues = ['unlearned', 'learning', 'mastered', 'not_mastered'];
+  for (const m of masteryValues) {
+    const btn = document.querySelector(
+      `[data-mastery="${m}"]`,
+    ) as HTMLElement | null;
+    if (!btn) continue;
+    btn.classList.toggle('active', m === learning.mastery);
+  }
+
+  // 主触发按钮：清掉所有 is-* 再加当前 mastery 的 class，更新中心字符
+  const trigger = $('btn-mastery');
+  if (trigger) {
+    for (const m of masteryValues) {
+      trigger.classList.remove(`is-${m}`);
+    }
+    trigger.classList.add(`is-${learning.mastery}`);
+    const icon = trigger.querySelector('.mastery-icon');
+    if (icon) icon.textContent = masteryIcon(learning.mastery);
+  }
 }
 
 interface AnswerPayload {
@@ -275,11 +350,14 @@ function showAnswer(payload: AnswerPayload): void {
     }
   }
 
-  // 切换 toggle 区到隐藏状态（同时把 show 按钮 hide，以备将来重新显示）
-  const toggle = document.querySelector('.answer-toggle');
-  if (toggle) (toggle as HTMLElement).hidden = true;
+  // 切换 toggle 区到隐藏状态（同时把 show 按钮 hide，以备将来重新显示）；
+  // 把 mastery-fab DOM 移到答案区底部右下角的 .answer-actions 内。
+  const toggle = $('answer-toggle');
+  if (toggle) toggle.hidden = true;
   const showBtn = $('btn-show-answer');
   if (showBtn) showBtn.setAttribute('hidden', '');
+  hideMasteryOptions();
+  moveMasteryToAnswer();
 }
 
 let statusTimer: ReturnType<typeof setTimeout> | undefined;
@@ -308,6 +386,35 @@ document.addEventListener('DOMContentLoaded', () => {
     vscode.postMessage({ type: 'toggleFavorite' });
   });
 
+  // 学习状态主按钮：toggle 4 个选项的可见性
+  $('btn-mastery')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const opts = document.querySelector('.mastery-options') as HTMLElement | null;
+    const trigger = $('btn-mastery');
+    if (!opts) return;
+    const willShow = opts.hidden;
+    opts.hidden = !willShow;
+    if (trigger) trigger.setAttribute('aria-expanded', willShow ? 'true' : 'false');
+  });
+
+  // 4 个选项按钮：发出 setMastery，并立刻关闭浮动菜单
+  document.querySelectorAll('[data-mastery]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const value = (btn as HTMLElement).dataset['mastery'];
+      if (value) vscode.postMessage({ type: 'setMastery', value });
+      hideMasteryOptions();
+    });
+  });
+
+  // 点击 fab 之外的任意位置关闭浮动菜单（不阻止事件，让原本的点击仍生效）
+  document.addEventListener('click', (e) => {
+    const fab = $('mastery-fab');
+    if (!fab) return;
+    if (fab.contains(e.target as Node)) return;
+    hideMasteryOptions();
+  });
+
   vscode.postMessage({ type: 'ready' });
 });
 
@@ -332,6 +439,10 @@ window.addEventListener('message', (event) => {
     }
     case 'favoriteAck': {
       if (!msg.ok) showStatus(`收藏操作失败: ${msg.reason ?? '未知错误'}`);
+      break;
+    }
+    case 'masteryAck': {
+      if (!msg.ok) showStatus(`掌握状态更新失败: ${msg.reason ?? '未知错误'}`);
       break;
     }
   }

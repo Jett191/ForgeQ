@@ -137,15 +137,28 @@ export class PracticePanel {
 
     <section id="test-cases" class="test-cases"></section>
 
-    <div class="answer-toggle">
+    <div id="answer-toggle" class="answer-toggle">
       <button id="btn-show-answer" class="btn primary" type="button">查看答案</button>
+      <div id="mastery-fab" class="mastery-fab">
+        <div class="mastery-options" hidden>
+          <button class="seg" type="button" data-mastery="unlearned" aria-label="未学习" title="未学习">○</button>
+          <button class="seg" type="button" data-mastery="learning" aria-label="学习中" title="学习中">◔</button>
+          <button class="seg" type="button" data-mastery="mastered" aria-label="已掌握" title="已掌握">✓</button>
+          <button class="seg" type="button" data-mastery="not_mastered" aria-label="未掌握" title="未掌握">✗</button>
+        </div>
+        <button id="btn-mastery" class="mastery-trigger" type="button" aria-label="学习状态" title="学习状态" aria-haspopup="true" aria-expanded="false">
+          <span class="mastery-icon" aria-hidden="true">○</span>
+        </button>
+      </div>
     </div>
 
     <section id="answer-area" class="answer-area hidden">
-      <button id="btn-collapse-answer" class="btn-collapse" type="button" aria-label="收起答案" title="收起答案">
-        <span aria-hidden="true">↑</span>
-      </button>
       <div id="answer-content"></div>
+      <div class="answer-actions">
+        <button id="btn-collapse-answer" class="btn-collapse" type="button" aria-label="收起答案" title="收起答案">
+          <span aria-hidden="true">↑</span>
+        </button>
+      </div>
     </section>
 
     <section id="follow-ups" class="follow-ups"></section>
