@@ -393,11 +393,17 @@ body {
 .answer-toggle {
   margin-top: var(--pad-6);
   display: flex;
-  justify-content: center;
+  align-items: center;
+  gap: 12px;
 }
 
 .answer-toggle[hidden] {
   display: none;
+}
+
+/* 学习状态浮动按钮组挤到右端，与"查看答案"主按钮分居两侧 */
+.answer-toggle .mastery-fab {
+  margin-left: auto;
 }
 
 .btn {
@@ -432,11 +438,16 @@ body {
   background: var(--vscode-button-hoverBackground);
 }
 
-/* 答案区右上角的圆形收起按钮（icon-only） */
-.btn-collapse {
-  position: absolute;
-  top: 12px;
-  right: 12px;
+/*
+ * 圆形 icon-only 按钮的统一基础样式：
+ *  - 答案区底部右下角的"收起答案" .btn-collapse
+ *  - 学习状态主触发按钮 .mastery-trigger
+ *  - 学习状态 4 个选项 .mastery-fab .seg
+ * 三者尺寸 / 圆角 / hover 行为统一，差异只在 active 配色。
+ */
+.btn-collapse,
+.mastery-trigger,
+.mastery-fab .seg {
   width: 28px;
   height: 28px;
   display: inline-flex;
@@ -450,10 +461,13 @@ body {
   font-size: 14px;
   line-height: 1;
   padding: 0;
+  font-family: inherit;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.btn-collapse:hover {
+.btn-collapse:hover,
+.mastery-trigger:hover,
+.mastery-fab .seg:hover {
   background: var(--bg-soft);
   color: var(--fg);
   border-color: var(--accent);
@@ -463,10 +477,66 @@ body {
   display: none;
 }
 
+/* ---------- 学习状态浮动按钮组 ---------- */
+
+.mastery-fab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mastery-options {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mastery-options[hidden] {
+  display: none;
+}
+
+/* 主触发按钮：根据当前 mastery 改变前景色与边框，提示当前状态 */
+.mastery-trigger.is-mastered {
+  color: var(--easy-fg);
+  border-color: rgba(22, 163, 74, 0.5);
+}
+
+.mastery-trigger.is-not_mastered {
+  color: var(--hard-fg);
+  border-color: rgba(220, 38, 38, 0.5);
+}
+
+.mastery-trigger.is-learning {
+  color: var(--med-fg);
+  border-color: rgba(202, 138, 4, 0.5);
+}
+
+/* 4 个选项 active 时填充对应色（与原 4 段式同款配色逻辑） */
+.mastery-fab .seg.active {
+  color: #fff;
+  border-color: transparent;
+}
+
+.mastery-fab .seg[data-mastery='mastered'].active {
+  background: var(--easy-fg);
+}
+
+.mastery-fab .seg[data-mastery='not_mastered'].active {
+  background: var(--hard-fg);
+}
+
+.mastery-fab .seg[data-mastery='learning'].active {
+  background: var(--med-fg);
+}
+
+.mastery-fab .seg[data-mastery='unlearned'].active {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
 /* ---------- 答案区 ---------- */
 
 .answer-area {
-  position: relative;
   margin-top: var(--pad-6);
   padding: 22px 24px;
   background: var(--bg-soft);
@@ -476,6 +546,16 @@ body {
 
 .answer-area.hidden {
   display: none;
+}
+
+/* 答案底部右下角的操作组（学习状态 + 收起答案）。
+   mastery-fab 由 JS 在答案展开 / 收起时在两个父容器间移动。 */
+.answer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: var(--pad-4);
 }
 
 .answer-area .answer-label {
