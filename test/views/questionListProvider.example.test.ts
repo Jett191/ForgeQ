@@ -48,6 +48,12 @@ vi.mock('vscode', () => ({
       this.id = id;
     }
   },
+  MarkdownString: class {
+    value: string;
+    constructor(value: string) {
+      this.value = value;
+    }
+  },
 }));
 
 // eslint-disable-next-line import/first
@@ -128,7 +134,8 @@ describe('QuestionListProvider example', () => {
         {
           id: 'q1',
           type: 'code',
-          title: 'First',
+          title: 'First question with a deliberately long complete title',
+          shortTitle: 'First',
           content: '',
           category: 'JS',
           tags: [],
@@ -165,9 +172,147 @@ describe('QuestionListProvider example', () => {
     expect(children[1]!.kind).toBe('question');
     if (children[0]!.kind === 'question') {
       expect(children[0]!.question.id).toBe('q1');
+      const item = provider.getTreeItem(children[0]);
+      expect(item.label).toBe('First');
+      expect(item.description).toBeUndefined();
     }
     if (children[1]!.kind === 'question') {
       expect(children[1]!.question.id).toBe('q2');
+      const item = provider.getTreeItem(children[1]);
+      expect(item.label).toBe('Second');
+      expect(item.description).toBeUndefined();
     }
+  });
+
+  it('分类分组忽略首尾空白与大小写，并保留首次出现顺序', () => {
+    const provider = new QuestionListProvider({ debounceMs: 0 });
+    const bank: QuestionBank = {
+      name: 'CategoryBank',
+      version: '1.0',
+      questions: [
+        {
+          id: 'q1', type: 'code', title: 'First JS', content: '',
+          category: ' JavaScript ', tags: [], difficulty: 'easy', answer: '',
+        },
+        {
+          id: 'q2', type: 'qa', title: 'CSS', content: '',
+          category: 'CSS', tags: [], difficulty: 'medium', answer: '',
+        },
+        {
+          id: 'q3', type: 'qa', title: 'Second JS', content: '',
+          category: 'javascript', tags: [], difficulty: 'hard', answer: '',
+        },
+      ],
+    };
+    const summary: BankSummary = {
+      id: 'category-bank', name: bank.name, version: bank.version,
+      questionCount: bank.questions.length, importedAt: Date.now(),
+    };
+    provider.setBank(bank, summary, new Map());
+
+    const bankNode = provider.getChildren(undefined)[0]!;
+    const groups = provider.getChildren(bankNode);
+
+    expect(groups.map((item) => item.kind === 'category' ? item.category : item.kind)).toEqual([
+      'JavaScript',
+      'CSS',
+    ]);
+    expect(groups[0]?.kind).toBe('category');
+    if (groups[0]?.kind === 'category') {
+      expect(groups[0].questions.map((q) => q.id)).toEqual(['q1', 'q3']);
+    }
+  });
+
+  it('分类筛选忽略首尾空白与大小写', () => {
+    const provider = new QuestionListProvider({ debounceMs: 0 });
+    const bank: QuestionBank = {
+      name: 'NormalizedFilterBank',
+      version: '1.0',
+      questions: [
+        {
+          id: 'q1', type: 'code', title: 'First', content: '',
+          category: 'JavaScript', tags: [], difficulty: 'easy', answer: '',
+        },
+        {
+          id: 'q2', type: 'qa', title: 'Second', content: '',
+          category: ' javascript ', tags: [], difficulty: 'medium', answer: '',
+        },
+        {
+          id: 'q3', type: 'qa', title: 'Third', content: '',
+          category: 'CSS', tags: [], difficulty: 'hard', answer: '',
+        },
+      ],
+    };
+    const summary: BankSummary = {
+      id: 'normalized-filter-bank', name: bank.name, version: bank.version,
+      questionCount: bank.questions.length, importedAt: Date.now(),
+    };
+    provider.setBank(bank, summary, new Map());
+    provider.setFilter({ category: ' JAVASCRIPT ' });
+
+    const bankNode = provider.getChildren(undefined)[0]!;
+    const children = provider.getChildren(bankNode);
+    expect(children.map((item) => item.kind === 'question' ? item.question.id : item.kind)).toEqual([
+      'q1',
+      'q2',
+    ]);
+  });
+
+  it('分类选项跟随其它筛选条件，但不受当前分类筛选限制', () => {
+    const provider = new QuestionListProvider({ debounceMs: 0 });
+    const bank: QuestionBank = {
+      name: 'LinkedFilterBank',
+      version: '1.0',
+      questions: [
+        {
+          id: 'q1', type: 'code', title: 'Code JS', content: '',
+          category: ' JavaScript ', tags: [], difficulty: 'easy', answer: '',
+        },
+        {
+          id: 'q2', type: 'code', title: 'Code JS duplicate', content: '',
+          category: 'javascript', tags: [], difficulty: 'hard', answer: '',
+        },
+        {
+          id: 'q3', type: 'code', title: 'Code CSS', content: '',
+          category: 'CSS', tags: [], difficulty: 'easy', answer: '',
+        },
+        {
+          id: 'q4', type: 'qa', title: 'QA HTML', content: '',
+          category: 'HTML', tags: [], difficulty: 'easy', answer: '',
+        },
+      ],
+    };
+    const summary: BankSummary = {
+      id: 'linked-filter-bank', name: bank.name, version: bank.version,
+      questionCount: bank.questions.length, importedAt: Date.now(),
+    };
+    provider.setBank(bank, summary, new Map());
+    provider.setFilter({ type: 'code', difficulty: 'easy', category: 'CSS' });
+
+    expect(provider.getCategoriesInBank()).toEqual(['JavaScript', 'CSS']);
+  });
+
+  it('切换题库时清空筛选，同一题库刷新时保留筛选', () => {
+    const provider = new QuestionListProvider({ debounceMs: 0 });
+    const bank: QuestionBank = {
+      name: 'Bank',
+      version: '1.0',
+      questions: [{
+        id: 'q1', type: 'qa', title: 'Question', content: '',
+        category: 'JS', tags: [], difficulty: 'easy', answer: '',
+      }],
+    };
+    const firstSummary: BankSummary = {
+      id: 'bank-1', name: bank.name, version: bank.version,
+      questionCount: 1, importedAt: Date.now(),
+    };
+    provider.setBank(bank, firstSummary, new Map());
+    provider.setFilter({ category: 'JS', difficulty: 'easy' });
+
+    provider.setBank(bank, { ...firstSummary }, new Map());
+    expect(provider.getFilter()).toEqual({ category: 'JS', difficulty: 'easy' });
+
+    provider.setBank(bank, { ...firstSummary, id: 'bank-2' }, new Map());
+    expect(provider.getFilter()).toEqual({});
   });
 });

@@ -11,6 +11,11 @@ import * as vscode from 'vscode';
 
 import type { BankRegistry } from '../storage/bankRegistry.js';
 import type { InMemoryState, Storage } from '../storage/storage.js';
+import {
+  syncProviders,
+  type QuestionListSyncTarget,
+  type ReviewSyncTarget,
+} from '../views/providerSync.js';
 
 /**
  * 切换当前激活题库。
@@ -19,8 +24,8 @@ export async function switchBank(
   registry: BankRegistry,
   storage: Storage,
   state: InMemoryState,
-  listProvider: { refresh(): void },
-  reviewProvider: { refresh(): void },
+  listProvider: QuestionListSyncTarget,
+  reviewProvider: ReviewSyncTarget,
 ): Promise<void> {
   const banks = registry.list();
   if (banks.length === 0) {
@@ -47,12 +52,13 @@ export async function switchBank(
     const bank = await storage.banks.readBank(selected.bankId);
     const learning = await storage.userData.readLearningMap(selected.bankId);
     state.currentBank = { bankId: selected.bankId, bank, learning };
-  } catch {
+  } catch (err) {
     delete state.currentBank;
+    const cause = err instanceof Error ? err.message : String(err);
+    await vscode.window.showErrorMessage(`切换题库失败: ${cause}`);
   }
 
-  listProvider.refresh();
-  reviewProvider.refresh();
+  syncProviders(state, registry.current(), listProvider, reviewProvider);
 }
 
 /**
@@ -60,9 +66,10 @@ export async function switchBank(
  */
 export async function removeBank(
   registry: BankRegistry,
+  storage: Storage,
   state: InMemoryState,
-  listProvider: { refresh(): void },
-  reviewProvider: { refresh(): void },
+  listProvider: QuestionListSyncTarget,
+  reviewProvider: ReviewSyncTarget,
 ): Promise<void> {
   const banks = registry.list();
   if (banks.length === 0) {
@@ -92,11 +99,23 @@ export async function removeBank(
 
   await registry.remove(selected.bankId);
 
-  // Clear state.currentBank if the removed bank was active
+  // 删除当前题库时，Storage 会自动选中剩余列表里最近导入的题库。
   if (state.currentBank?.bankId === selected.bankId) {
-    delete state.currentBank;
+    const fallback = registry.current();
+    if (fallback) {
+      try {
+        const bank = await storage.banks.readBank(fallback.id);
+        const learning = await storage.userData.readLearningMap(fallback.id);
+        state.currentBank = { bankId: fallback.id, bank, learning };
+      } catch (err) {
+        delete state.currentBank;
+        const cause = err instanceof Error ? err.message : String(err);
+        await vscode.window.showErrorMessage(`删除成功，但加载剩余题库失败: ${cause}`);
+      }
+    } else {
+      delete state.currentBank;
+    }
   }
 
-  listProvider.refresh();
-  reviewProvider.refresh();
+  syncProviders(state, registry.current(), listProvider, reviewProvider);
 }

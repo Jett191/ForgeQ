@@ -27,7 +27,7 @@
  *           加载失败仅弹错误提示，把 `currentBank` 留 `undefined` 让上层 UI
  *           回退到 "未导入题库" 状态，不影响其它 bank。
  *
- *   3. **installBank**：把执行细节委托给 `installBank.ts` 的五阶段事务实现，
+   *   3. **installBank**：把执行细节委托给 `installBank.ts` 的新增事务实现，
  *      同步更新内存中的 `currentMeta`。任意 Phase 1 / 2 / 3 失败都已经在子层
  *      做完回滚；本 Facade 把 `InstallBankError` 透传给调用方。
  *
@@ -299,7 +299,7 @@ export class Storage {
   }
 
   /**
-   * 安全切换（覆盖）导入：委托给 {@link installBankImpl} 的五阶段事务。
+   * 新增导入：委托给 {@link installBankImpl} 的四阶段事务。
    *
    * 成功时同步刷新 `currentMeta`；失败时已经在子层完成回滚，把
    * `InstallBankError` 透出给调用方。
@@ -315,14 +315,8 @@ export class Storage {
         meta: this.meta,
         banks: this.banks,
         userData: this.userData,
-        trash: this.trash,
         globalState: this.ctx.globalState,
         currentMeta: this.currentMeta,
-        banksBaseUri: vscode.Uri.joinPath(this.ctx.globalStorageUri, 'banks'),
-        userDataBaseUri: vscode.Uri.joinPath(
-          this.ctx.globalStorageUri,
-          'user-data',
-        ),
       },
     );
     // installBankImpl 返回的 nextMeta 已经在 Phase 3 写盘成功；同步内存快照。
@@ -333,9 +327,24 @@ export class Storage {
   }
 
   /**
+   * Persist a current-bank selection and update this facade's in-memory meta
+   * snapshot in the same operation. Returns false for an unknown bank id.
+   */
+  async switchToBank(bankId: string): Promise<boolean> {
+    if (!this.currentMeta.banks.some((bank) => bank.id === bankId)) return false;
+    if (this.currentMeta.currentBankId === bankId) return true;
+
+    const nextMeta: BankMeta = { ...this.currentMeta, currentBankId: bankId };
+    await this.meta.writeAtomic(nextMeta);
+    this.currentMeta = nextMeta;
+    return true;
+  }
+
+  /**
    * 移除指定 bank。把 `banks/<bankId>` 与 `user-data/<bankId>` 搬入 trash，
    * 再原子写一次 `meta.json` 把它从摘要列表移除；若移除的是当前激活 bank，
-   * 同步把 `currentBankId` 清空并刷新 globalState。
+   * 自动选择剩余列表中最近导入的 bank，并同步刷新 globalState。没有剩余题库时
+   * 才清空 `currentBankId`。
    *
    * 顺序约束：先 moveToTrash 再写 meta.json。这样即便 meta.json 写入失败、
    * 旧 bank 已经被搬入 trash，下次启动时 `Storage.bootstrap` 在加载 currentBank
@@ -390,8 +399,11 @@ export class Storage {
     // 决定是否携带 currentBankId。
     const wasActive = this.currentMeta.currentBankId === bankId;
     const { currentBankId: _prevCurrent, ...metaRest } = this.currentMeta;
+    const fallbackId = wasActive ? filteredBanks.at(-1)?.id : undefined;
     const nextMeta: BankMeta = wasActive
-      ? { ...metaRest, banks: filteredBanks }
+      ? fallbackId !== undefined
+        ? { ...metaRest, currentBankId: fallbackId, banks: filteredBanks }
+        : { ...metaRest, banks: filteredBanks }
       : { ...this.currentMeta, banks: filteredBanks };
     await this.meta.writeAtomic(nextMeta);
     this.currentMeta = nextMeta;
@@ -401,7 +413,7 @@ export class Storage {
       try {
         await this.ctx.globalState.update(
           GLOBAL_STATE_CURRENT_BANK_ID,
-          undefined,
+          fallbackId,
         );
       } catch (err) {
         console.warn(

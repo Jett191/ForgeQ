@@ -67,12 +67,9 @@ export class BankRegistry {
    * 若 `bankId` 不在当前列表中，直接返回（防御过期 UI 操作）。
    */
   async switchTo(bankId: string): Promise<void> {
-    const meta = this.storage.getCurrentMeta();
-    if (!meta.banks.some((b) => b.id === bankId)) return;
-    if (meta.currentBankId === bankId) return;
-
-    const nextMeta = { ...meta, currentBankId: bankId };
-    await this.storage.meta.writeAtomic(nextMeta);
+    const previousId = this.storage.getCurrentMeta().currentBankId;
+    const switched = await this.storage.switchToBank(bankId);
+    if (!switched || previousId === bankId) return;
 
     // 同步 globalState（失败仅警告，meta.json 为真理源）。
     try {
@@ -100,7 +97,7 @@ export class BankRegistry {
   }
 
   /**
-   * 判断是否已存在同名同版本的题库（用于覆盖导入前的提示）。
+   * 判断是否已存在同名同版本的题库（用于阻止重复新增）。
    */
   isLegacyDuplicate(bank: QuestionBank): boolean {
     const banks = this.storage.getCurrentMeta().banks;

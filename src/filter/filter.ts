@@ -27,7 +27,7 @@
  * - **维度激活判定**（Req 4.1）：仅当用户为某维度设置了"非空筛选值"时该维度
  *   才视为激活。具体规则：
  *   - `type`：`!== undefined` 即激活（类型系统已收窄到 `'code' | 'qa'`）。
- *   - `category`：`!== undefined` 且字符串长度 ≥ 1。
+ *   - `category`：规范化后（去首尾空白、忽略大小写）长度 ≥ 1。
  *   - `tags`：`!== undefined` 且 `Set.size ≥ 1`。
  *   - `difficulty`：`!== undefined` 即激活。
  * - **多维度组合**（Req 4.6）：四维谓词逻辑与；未激活的维度恒返回 `true`，
@@ -51,8 +51,8 @@ import type { Difficulty, Question, QuestionType } from '../types/question';
  * 四维筛选状态。任意维度未设置时为 `undefined`，表示该维度未激活。
  *
  * - `type`：`'code' | 'qa'`；激活时仅保留 `q.type === f.type` 的题目（Req 4.2）。
- * - `category`：1-100 字符；激活时仅保留 `q.category === f.category` 的题目，
- *   区分大小写（Req 4.3）。
+ * - `category`：1-100 字符；匹配前忽略首尾空白与大小写，避免同一分类因导入
+ *   文件的书写差异被拆成多个分类（Req 4.3）。
  * - `tags`：非空标签集合（1 ≤ |T| ≤ 50）；激活时仅保留 `q.tags ∩ T ≠ ∅` 的
  *   题目（Req 4.4）。注意约束由 UI 层在写入前保证，本模块不在运行时校验上限。
  * - `difficulty`：`'easy' | 'medium' | 'hard'`；激活时仅保留 `q.difficulty ===
@@ -65,6 +65,16 @@ export interface FilterState {
   difficulty?: Difficulty;
 }
 
+/**
+ * 返回分类用于比较与去重的稳定 key。
+ *
+ * 这里只规范化比较值，不改写题库中的原始 category，确保导入数据与导出内容
+ * 保持原样。
+ */
+export function normalizeCategory(category: string): string {
+  return category.trim().toLowerCase();
+}
+
 /** `FilterState` 的所有维度 key（保持稳定顺序，便于迭代）。 */
 const DIMENSIONS = ['type', 'category', 'tags', 'difficulty'] as const satisfies readonly (keyof FilterState)[];
 
@@ -74,8 +84,8 @@ const DIMENSIONS = ['type', 'category', 'tags', 'difficulty'] as const satisfies
  * 依据 Req 4.1：当且仅当用户为该维度设置了非空筛选值时视为激活。
  *
  * - `type` / `difficulty`：值类型已被字面量联合收窄，`!== undefined` 即激活。
- * - `category`：除了 `!== undefined`，还要求字符串长度 ≥ 1，避免空字符串
- *   退化为"匹配空分类"的歧义。
+ * - `category`：除了 `!== undefined`，还要求去除首尾空白后长度 ≥ 1，避免
+ *   空字符串或纯空白退化为"匹配空分类"的歧义。
  * - `tags`：除了 `!== undefined`，还要求 `Set.size ≥ 1`，与 Req 4.4 中
  *   "非空标签集合 T (1 ≤ |T| ≤ 50)" 对齐。
  *
@@ -86,7 +96,7 @@ export function isActive(f: FilterState, dim: keyof FilterState): boolean {
     case 'type':
       return f.type !== undefined;
     case 'category':
-      return f.category !== undefined && f.category.length > 0;
+      return f.category !== undefined && normalizeCategory(f.category).length > 0;
     case 'tags':
       return f.tags !== undefined && f.tags.size > 0;
     case 'difficulty':
@@ -121,14 +131,14 @@ export function applyFilter(questions: readonly Question[], f: FilterState): Que
   }
 
   const wantedType = f.type;
-  const wantedCategory = f.category;
+  const wantedCategory = f.category === undefined ? undefined : normalizeCategory(f.category);
   const wantedTags = f.tags;
   const wantedDifficulty = f.difficulty;
 
   const out: Question[] = [];
   for (const q of questions) {
     if (typeActive && q.type !== wantedType) continue;
-    if (categoryActive && q.category !== wantedCategory) continue;
+    if (categoryActive && normalizeCategory(q.category) !== wantedCategory) continue;
     if (tagsActive) {
       // tags 维度：只要 q.tags 与 wantedTags 交集非空即视为命中（Req 4.4）。
       // 选择遍历 q.tags 而非 wantedTags，是因为 q.tags 通常更短且 ReadonlySet

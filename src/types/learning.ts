@@ -35,10 +35,8 @@ export interface LearningState {
   /**
    * 是否错题标记；默认 `false`。
    *
-   * 与 `mastery` 联动（见 `deriveLearningState`）：
-   * - 设置为 `'not_mastered'` 时置为 `true`（Req 9.3）。
-   * - 设置为 `'mastered'` 时置为 `false`（Req 9.4）。
-   * - 其他状态变更不触碰本字段。
+   * 由独立的“错题”按钮切换；设置为 `'mastered'` 时会清除该标记，
+   * 其他掌握状态变更不触碰本字段。
    */
   wrongFlag: boolean;
   /**

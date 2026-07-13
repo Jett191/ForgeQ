@@ -8,9 +8,8 @@
 //     · M2 把任一必填字段替换为类型不匹配的值；
 //     · M3 把 `type` 替换为 {code, qa} 之外的字符串；
 //     · M4 把 `difficulty` 替换为 {easy, medium, hard} 之外的字符串；
-//     · M5 跨子类型字段注入：把仅属于 code 题的字段（如 `referenceCode` /
-//          `testCases`）注入到 qa 题，或把仅属于 qa 题的字段（如
-//          `briefAnswer` / `followUps`）注入到 code 题。
+//     · M5 子类型/未知字段注入：把历史 code 题字段注入 qa 题，或给 code
+//          题注入 schema 未声明字段。
 //   ——`Parser` 必须返回 `SCHEMA_VIOLATION`，且其 `violations` 中至少包含一
 //   条描述该突变的 (path, kind)。M3 / M4 与 M5 的 violation 还必须携带对应
 //   `Question.id` 与 `questionType`（用于 UI 精准定位）。
@@ -308,8 +307,8 @@ const arbReplaceDifficultyEnum = (
 /**
  * M5：跨子类型字段注入。
  *
- * - 在 qa 题中注入仅属于 code 题的字段（如 `referenceCode` / `solutionExplanation`）。
- * - 在 code 题中注入仅属于 qa 题的字段（如 `briefAnswer` / `detailedAnswer`）。
+ * - 在 qa 题中注入仅属于历史 code 题的字段（如 `referenceCode`）。
+ * - code 题与 qa 题现在共享答案字段，因此 code 题改为注入未知字段。
  *
  * 与 schema 的耦合：注入的字段名必须在被注入题型的 `*Extras.properties`
  * 中**未声明**——这才会被 `unevaluatedProperties: false` / `oneOf` /
@@ -324,7 +323,6 @@ const arbReplaceDifficultyEnum = (
  * 注入字段值故意选用合法 string，避免 type_mismatch 噪声覆盖跨题型违规。
  */
 const CODE_ONLY_FIELDS = ['referenceCode', 'solutionExplanation', 'initialCode'] as const;
-const QA_ONLY_FIELDS = ['briefAnswer', 'detailedAnswer'] as const;
 
 const arbInjectCrossTypeField = (bank: QuestionBank): fc.Arbitrary<Mutation> => {
   // 为每道题计算"对面题型字段"列表；为后续 fc.constantFrom 准备样本池。
@@ -337,7 +335,7 @@ const arbInjectCrossTypeField = (bank: QuestionBank): fc.Arbitrary<Mutation> => 
     if (q.type === 'qa') {
       for (const f of CODE_ONLY_FIELDS) candidates.push({ qIdx: i, field: f });
     } else {
-      for (const f of QA_ONLY_FIELDS) candidates.push({ qIdx: i, field: f });
+      candidates.push({ qIdx: i, field: 'unsupportedQuestionField' });
     }
   }
   // arbQuestionBank 至少 1 道题，candidates 必非空（每个题型都至少 2 个独有字段）。

@@ -5,6 +5,7 @@
  *
  *   - `learning.json`              ：单题学习状态（mastery / favoriteFlag /
  *                                    wrongFlag / hasNote / lastPracticedAt）。
+ *   - `projects/<qid>/`            ：单题练习项目，可包含任意数量与层级的文件。
  *   - `code/<qid>.<ext>`           ：代码题练习文件（`PracticeKind = 'code'`）。
  *   - `qa/<qid>.<ext>`             ：QA 题"我的回答"文件（`PracticeKind = 'qa'`）。
  *   - `notes/<qid>.md`             ：用户笔记（`PracticeKind = 'note'`）。
@@ -21,6 +22,7 @@
  * <baseUri>/                        // 通常是 <globalStorageUri>/user-data
  * └── <bankId>/
  *     ├── learning.json             // { [qid]: LearningState }
+ *     ├── projects/<qid>/            // 新版：一道题一个独立项目目录
  *     ├── code/<qid>.<ext>          // 代码题练习文件
  *     ├── qa/<qid>.<ext>            // QA 我的回答（一般为 .md）
  *     └── notes/<qid>.md            // 用户笔记（一般为 .md）
@@ -86,6 +88,9 @@ const DEFAULT_DEBOUNCE_MS = 1000;
 /** `learning.json` 文件名，固定。 */
 const LEARNING_JSON_FILE = 'learning.json';
 
+/** 新版单题项目统一存放目录。 */
+const PROJECTS_DIR = 'projects';
+
 /** 各 `PracticeKind` 对应的子目录名。 */
 const PRACTICE_SUBDIR: Readonly<Record<PracticeKind, string>> = Object.freeze({
   code: 'code',
@@ -114,6 +119,33 @@ const DEFAULT_LEARNING_STATE: Readonly<LearningState> = Object.freeze({
 export function getOrDefault(state: LearningState | undefined): LearningState {
   if (state !== undefined) return state;
   return { ...DEFAULT_LEARNING_STATE };
+}
+
+/** 单题项目中的一个普通文件。 */
+export interface QuestionProjectFile {
+  relativePath: string;
+  uri: vscode.Uri;
+}
+
+/**
+ * 把题目 id 编码成单个安全目录名，避免 `/`、`..` 等内容逃逸出题目目录。
+ * 编码只影响磁盘路径，不修改题库中的原始 id。
+ */
+function projectQuestionSegment(qid: string): string {
+  return encodeURIComponent(qid).replace(/\./g, '%2E');
+}
+
+/** 校验并拆分用户输入的项目内相对文件路径。 */
+function projectPathSegments(relativePath: string): string[] {
+  const normalized = relativePath.trim().replace(/\\/g, '/');
+  if (normalized.length === 0 || normalized.startsWith('/') || normalized.endsWith('/')) {
+    throw new Error('文件名不能为空，也不能使用绝对路径或以 / 结尾');
+  }
+  const segments = normalized.split('/');
+  if (segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) {
+    throw new Error('文件路径不能包含空目录、. 或 ..');
+  }
+  return segments;
 }
 
 /**
@@ -392,6 +424,69 @@ export class UserDataStore {
     await writeAtomicText(uri, value);
   }
 
+  // ---- 单题项目 API -------------------------------------------------------
+
+  /**
+   * 返回并确保单题项目目录存在：
+   * `<baseUri>/<bankId>/projects/<encoded-qid>/`。
+   */
+  async ensureQuestionProject(bankId: string, qid: string): Promise<vscode.Uri> {
+    const uri = this.questionProjectUri(bankId, qid);
+    await vscode.workspace.fs.createDirectory(uri);
+    return uri;
+  }
+
+  /** 返回单题项目目录 URI；该方法本身不会创建目录。 */
+  getQuestionProjectUri(bankId: string, qid: string): vscode.Uri {
+    return this.questionProjectUri(bankId, qid);
+  }
+
+  /**
+   * 确保项目中的相对路径文件存在；允许 `src/App.jsx` 这样的嵌套路径。
+   * 已存在文件不会被覆盖。
+   */
+  async ensureQuestionProjectFile(
+    bankId: string,
+    qid: string,
+    relativePath: string,
+    init = '',
+  ): Promise<vscode.Uri> {
+    const segments = projectPathSegments(relativePath);
+    const root = await this.ensureQuestionProject(bankId, qid);
+    const parentSegments = segments.slice(0, -1);
+    if (parentSegments.length > 0) {
+      await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(root, ...parentSegments));
+    }
+    const uri = vscode.Uri.joinPath(root, ...segments);
+    if (!(await this.fileExists(uri))) {
+      await writeAtomicText(uri, init);
+    }
+    return uri;
+  }
+
+  /** 递归列出单题项目中的全部普通文件，返回稳定的路径排序。 */
+  async listQuestionProjectFiles(bankId: string, qid: string): Promise<QuestionProjectFile[]> {
+    const root = await this.ensureQuestionProject(bankId, qid);
+    const files: QuestionProjectFile[] = [];
+
+    const walk = async (dir: vscode.Uri, prefix: string): Promise<void> => {
+      const entries = await vscode.workspace.fs.readDirectory(dir);
+      for (const [name, type] of entries) {
+        const uri = vscode.Uri.joinPath(dir, name);
+        const relativePath = prefix.length > 0 ? `${prefix}/${name}` : name;
+        if (type === vscode.FileType.Directory) {
+          await walk(uri, relativePath);
+        } else if (type === vscode.FileType.File && !name.endsWith('.tmp')) {
+          files.push({ relativePath, uri });
+        }
+      }
+    };
+
+    await walk(root, '');
+    files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+    return files;
+  }
+
   /**
    * 读取 `<baseUri>/<bankId>/notes/<qid>.md` 的内容。
    * 文件不存在 → `undefined`；存在 → 文件文本（可能是空字符串，但通常不会出现，
@@ -583,6 +678,15 @@ export class UserDataStore {
   ): vscode.Uri {
     const subdir = PRACTICE_SUBDIR[kind];
     return vscode.Uri.joinPath(this.bankRootUri(bankId), subdir, `${qid}${ext}`);
+  }
+
+  /** `<baseUri>/<bankId>/projects/<encoded-qid>/`。 */
+  private questionProjectUri(bankId: string, qid: string): vscode.Uri {
+    return vscode.Uri.joinPath(
+      this.bankRootUri(bankId),
+      PROJECTS_DIR,
+      projectQuestionSegment(qid),
+    );
   }
 
   /** `<baseUri>/<bankId>/notes/<qid>.md`，笔记文件固定 `.md` 扩展名。 */

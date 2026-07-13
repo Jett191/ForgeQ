@@ -12,15 +12,10 @@ import * as vscode from 'vscode';
 
 import type { LearningState } from '../../types/learning.js';
 import type { MasteryStatus, Question } from '../../types/question.js';
-import { deriveLearningState } from '../../domain/masteryRules.js';
+import { deriveLearningState, toggleWrongFlag } from '../../domain/masteryRules.js';
 import { getOrDefault } from '../../storage/userDataStore.js';
 import type { InMemoryState, Storage } from '../../storage/storage.js';
-import {
-  deriveCodeAnswer,
-  deriveQAAnswer,
-  extForLanguage,
-  isCodeQuestion,
-} from '../practiceFiles.js';
+import { deriveQuestionAnswer } from '../practiceFiles.js';
 import type {
   AnswerPayload,
   HostToWebviewMessage,
@@ -33,13 +28,26 @@ export interface PanelDeps {
   storage: Storage;
   state: InMemoryState;
   extensionUri: vscode.Uri;
+  onLearningChanged?: (bankId: string, qid: string) => void;
+  onOpenProject?: (
+    bankId: string,
+    qid: string,
+    question: Question,
+    learning: Map<string, LearningState>,
+  ) => Promise<void>;
 }
 
 interface PanelInstance {
   panel: vscode.WebviewPanel;
+  bankId: string;
   qid: string;
   question: Question;
+  learning: Map<string, LearningState>;
   disposables: vscode.Disposable[];
+}
+
+function panelKey(bankId: string, qid: string): string {
+  return JSON.stringify([bankId, qid]);
 }
 
 /**
@@ -54,11 +62,14 @@ export class PracticePanel {
    * 创建或聚焦 Webview Panel。
    */
   createOrShow(
+    bankId: string,
     qid: string,
     question: Question,
+    learning: Map<string, LearningState>,
     viewColumn: vscode.ViewColumn,
   ): void {
-    const existing = this.instances.get(qid);
+    const key = panelKey(bankId, qid);
+    const existing = this.instances.get(key);
     if (existing) {
       existing.panel.reveal(viewColumn);
       return;
@@ -80,18 +91,18 @@ export class PracticePanel {
     const disposables: vscode.Disposable[] = [];
 
     panel.webview.onDidReceiveMessage(
-      (msg: WebviewToHostMessage) => this.handleMessage(qid, question, msg),
+      (msg: WebviewToHostMessage) => this.handleMessage(bankId, qid, question, learning, msg),
       undefined,
       disposables,
     );
 
     panel.onDidDispose(
-      () => this.disposeInstance(qid),
+      () => this.disposeInstance(bankId, qid),
       undefined,
       disposables,
     );
 
-    this.instances.set(qid, { panel, qid, question, disposables });
+    this.instances.set(key, { panel, bankId, qid, question, learning, disposables });
 
     // Set webview HTML content
     panel.webview.html = this.getWebviewHtml(panel.webview);
@@ -135,16 +146,15 @@ export class PracticePanel {
 
     <article id="question-content" class="md"></article>
 
-    <section id="test-cases" class="test-cases"></section>
-
     <div id="answer-toggle" class="answer-toggle">
+      <button id="btn-open-project" class="btn" type="button">项目文件</button>
       <button id="btn-show-answer" class="btn primary" type="button">查看答案</button>
       <div id="mastery-fab" class="mastery-fab">
         <div class="mastery-options" hidden>
           <button class="seg" type="button" data-mastery="unlearned" aria-label="未学习" title="未学习">○</button>
-          <button class="seg" type="button" data-mastery="learning" aria-label="学习中" title="学习中">◔</button>
+          <button class="seg" type="button" data-mastery="not_mastered" aria-label="未掌握" title="未掌握">◔</button>
           <button class="seg" type="button" data-mastery="mastered" aria-label="已掌握" title="已掌握">✓</button>
-          <button class="seg" type="button" data-mastery="not_mastered" aria-label="未掌握" title="未掌握">✗</button>
+          <button class="seg" type="button" data-wrong aria-label="错题" title="错题">✗</button>
         </div>
         <button id="btn-mastery" class="mastery-trigger" type="button" aria-label="学习状态" title="学习状态" aria-haspopup="true" aria-expanded="false">
           <span class="mastery-icon" aria-hidden="true">○</span>
@@ -174,8 +184,8 @@ export class PracticePanel {
   /**
    * 向指定 panel post message。
    */
-  postMessage(qid: string, msg: HostToWebviewMessage): void {
-    const instance = this.instances.get(qid);
+  postMessage(bankId: string, qid: string, msg: HostToWebviewMessage): void {
+    const instance = this.instances.get(panelKey(bankId, qid));
     if (instance) {
       void instance.panel.webview.postMessage(msg);
     }
@@ -184,15 +194,15 @@ export class PracticePanel {
   /**
    * 判断指定 qid 是否有活跃 panel。
    */
-  has(qid: string): boolean {
-    return this.instances.has(qid);
+  has(bankId: string, qid: string): boolean {
+    return this.instances.has(panelKey(bankId, qid));
   }
 
   /**
    * 关闭并清理指定 panel。
    */
-  close(qid: string): void {
-    const instance = this.instances.get(qid);
+  close(bankId: string, qid: string): void {
+    const instance = this.instances.get(panelKey(bankId, qid));
     if (instance) {
       instance.panel.dispose();
       // onDidDispose will call disposeInstance
@@ -203,33 +213,48 @@ export class PracticePanel {
    * 清理所有 panel。
    */
   disposeAll(): void {
-    for (const [qid] of this.instances) {
-      this.close(qid);
+    for (const instance of [...this.instances.values()]) {
+      this.close(instance.bankId, instance.qid);
     }
   }
 
-  private disposeInstance(qid: string): void {
-    const instance = this.instances.get(qid);
+  private disposeInstance(bankId: string, qid: string): void {
+    const key = panelKey(bankId, qid);
+    const instance = this.instances.get(key);
     if (instance) {
       for (const d of instance.disposables) {
         d.dispose();
       }
-      this.instances.delete(qid);
+      this.instances.delete(key);
     }
   }
 
   private async handleMessage(
+    bankId: string,
     qid: string,
     question: Question,
+    learningMap: Map<string, LearningState>,
     msg: WebviewToHostMessage,
   ): Promise<void> {
-    const { storage, state } = this.deps;
-    const bankId = state.currentBank?.bankId;
-    if (!bankId) return;
+    const { storage } = this.deps;
+
+    const isReadOnlyMessage = msg.type === 'ready' || msg.type === 'requestAnswer';
+    const bankStillExists = storage.getCurrentMeta().banks.some((bank) => bank.id === bankId);
+    if (!isReadOnlyMessage && !bankStillExists) {
+      const reason = '题库已被移除或替换';
+      if (msg.type === 'toggleFavorite') {
+        this.postMessage(bankId, qid, { type: 'favoriteAck', ok: false, reason });
+      } else if (msg.type === 'toggleWrong') {
+        this.postMessage(bankId, qid, { type: 'wrongAck', ok: false, reason });
+      } else if (msg.type === 'setMastery') {
+        this.postMessage(bankId, qid, { type: 'masteryAck', ok: false, reason });
+      }
+      return;
+    }
 
     switch (msg.type) {
       case 'ready': {
-        const learning = getOrDefault(state.currentBank?.learning.get(qid));
+        const learning = getOrDefault(learningMap.get(qid));
 
         const initPayload: HostToWebviewMessage = {
           type: 'init',
@@ -240,24 +265,20 @@ export class PracticePanel {
             noteFileUri: `notes/${qid}.md`,
           },
         };
-        this.postMessage(qid, initPayload);
+        this.postMessage(bankId, qid, initPayload);
         break;
       }
 
       case 'requestAnswer': {
-        let payload: AnswerPayload;
-        if (isCodeQuestion(question)) {
-          payload = { questionType: 'code', answer: deriveCodeAnswer(question) };
-        } else {
-          payload = { questionType: 'qa', answer: deriveQAAnswer(question) };
-        }
-        this.postMessage(qid, { type: 'showAnswer', payload });
+        const payload: AnswerPayload = {
+          questionType: question.type,
+          answer: deriveQuestionAnswer(question),
+        };
+        this.postMessage(bankId, qid, { type: 'showAnswer', payload });
         break;
       }
 
       case 'toggleFavorite': {
-        const learningMap = state.currentBank?.learning;
-        if (!learningMap) break;
         const prev = getOrDefault(learningMap.get(qid));
         const next: LearningState = { ...prev, favoriteFlag: !prev.favoriteFlag };
 
@@ -271,20 +292,19 @@ export class PracticePanel {
         });
 
         if (result.ok) {
-          this.postMessage(qid, { type: 'favoriteAck', ok: true });
-          this.postMessage(qid, { type: 'refreshLearning', payload: next });
+          this.postMessage(bankId, qid, { type: 'favoriteAck', ok: true });
+          this.postMessage(bankId, qid, { type: 'refreshLearning', payload: next });
+          this.deps.onLearningChanged?.(bankId, qid);
         } else {
           const reason = 'cause' in result.error ? result.error.cause : 'unknown';
-          this.postMessage(qid, { type: 'favoriteAck', ok: false, reason });
-          this.postMessage(qid, { type: 'rollback', payload: prev });
+          this.postMessage(bankId, qid, { type: 'favoriteAck', ok: false, reason });
+          this.postMessage(bankId, qid, { type: 'rollback', payload: prev });
         }
         break;
       }
 
       case 'setMastery': {
         const mastery = msg.value as MasteryStatus;
-        const learningMap = state.currentBank?.learning;
-        if (!learningMap) break;
         const prev = getOrDefault(learningMap.get(qid));
         const next = deriveLearningState(prev, mastery);
 
@@ -298,13 +318,44 @@ export class PracticePanel {
         });
 
         if (result.ok) {
-          this.postMessage(qid, { type: 'masteryAck', ok: true });
-          this.postMessage(qid, { type: 'refreshLearning', payload: next });
+          this.postMessage(bankId, qid, { type: 'masteryAck', ok: true });
+          this.postMessage(bankId, qid, { type: 'refreshLearning', payload: next });
+          this.deps.onLearningChanged?.(bankId, qid);
         } else {
           const reason = 'cause' in result.error ? result.error.cause : 'unknown';
-          this.postMessage(qid, { type: 'masteryAck', ok: false, reason });
-          this.postMessage(qid, { type: 'rollback', payload: prev });
+          this.postMessage(bankId, qid, { type: 'masteryAck', ok: false, reason });
+          this.postMessage(bankId, qid, { type: 'rollback', payload: prev });
         }
+        break;
+      }
+
+      case 'toggleWrong': {
+        const prev = getOrDefault(learningMap.get(qid));
+        const next = toggleWrongFlag(prev);
+
+        const result = await storage.writeWithRollback({
+          prev,
+          next,
+          applyMemory: (v) => { learningMap.set(qid, v); },
+          persist: () => storage.userData.writeLearningState(bankId, qid, next),
+          onRollback: (v) => { learningMap.set(qid, v); },
+          path: 'learning.json',
+        });
+
+        if (result.ok) {
+          this.postMessage(bankId, qid, { type: 'wrongAck', ok: true });
+          this.postMessage(bankId, qid, { type: 'refreshLearning', payload: next });
+          this.deps.onLearningChanged?.(bankId, qid);
+        } else {
+          const reason = 'cause' in result.error ? result.error.cause : 'unknown';
+          this.postMessage(bankId, qid, { type: 'wrongAck', ok: false, reason });
+          this.postMessage(bankId, qid, { type: 'rollback', payload: prev });
+        }
+        break;
+      }
+
+      case 'openProject': {
+        await this.deps.onOpenProject?.(bankId, qid, question, learningMap);
         break;
       }
 
@@ -312,15 +363,9 @@ export class PracticePanel {
         const target = msg.target;
         let fileUri: vscode.Uri | undefined;
 
-        if (target === 'code' && isCodeQuestion(question)) {
-          const ext = extForLanguage(question.language);
-          fileUri = await storage.userData.ensurePracticeFile(
-            bankId, qid, 'code', ext, '',
-          );
-        } else if (target === 'qa') {
-          fileUri = await storage.userData.ensurePracticeFile(
-            bankId, qid, 'qa', '.md', '',
-          );
+        if (target === 'code' || target === 'qa') {
+          await this.deps.onOpenProject?.(bankId, qid, question, learningMap);
+          break;
         } else if (target === 'note') {
           fileUri = await storage.userData.ensurePracticeFile(
             bankId, qid, 'note', '.md', '',

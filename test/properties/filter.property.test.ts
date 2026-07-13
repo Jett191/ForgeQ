@@ -45,7 +45,7 @@ import {
 // 该 Property 覆盖三组断言，按 design.md 原文（Property 4）：
 //   ① 已激活维度的"逐维度逻辑与"（soundness）：
 //      - 若 f.type 已激活，则 ∀q∈R, q.type === f.type；
-//      - 若 f.category 已激活，则 ∀q∈R, q.category === f.category（区分大小写）;
+//      - 若 f.category 已激活，则规范化后的 q.category 与 f.category 相等；
 //      - 若 f.tags 已激活，则 ∀q∈R, q.tags 与 f.tags 交集非空；
 //      - 若 f.difficulty 已激活，则 ∀q∈R, q.difficulty === f.difficulty。
 //   ② 完备性：任何 q∈Q 同时满足所有已激活维度时必然 q∈R。
@@ -65,8 +65,8 @@ describe('Filter Property 4: 维度语义、单位元', () => {
    * 第 ① 条：已激活维度的逐维度逻辑与（soundness）。
    *
    * 对 R = `applyFilter(Q, f)` 中的每道题 q，逐维度验证：
-   * - 已激活的维度必须按各自语义命中（type / category / difficulty 用 ===，
-   *   tags 用集合交集非空）；
+   * - 已激活的维度必须按各自语义命中（type / difficulty 用 ===，category
+   *   忽略首尾空白与大小写，tags 用集合交集非空）；
    * - 未激活的维度对 q 不施加任何约束（隐含于"不检查"即可）。
    *
    * 这与 Req 4.2-4.6 严格对齐；用 `arbFilterStateForBank` 提高命中率，避免
@@ -88,7 +88,7 @@ describe('Filter Property 4: 维度语义、单位元', () => {
               expect(q.type).toBe(filter.type);
             }
             if (isActive(filter, 'category')) {
-              expect(q.category).toBe(filter.category);
+              expect(q.category.trim().toLowerCase()).toBe(filter.category?.trim().toLowerCase());
             }
             if (isActive(filter, 'tags')) {
               const wanted = filter.tags as ReadonlySet<string>;
@@ -170,7 +170,10 @@ describe('Filter Property 4: 维度语义、单位元', () => {
     f: FilterState,
   ): boolean {
     if (isActive(f, 'type') && q.type !== f.type) return false;
-    if (isActive(f, 'category') && q.category !== f.category) return false;
+    if (
+      isActive(f, 'category') &&
+      q.category.trim().toLowerCase() !== f.category?.trim().toLowerCase()
+    ) return false;
     if (isActive(f, 'tags')) {
       const wanted = f.tags as ReadonlySet<string>;
       let hit = false;

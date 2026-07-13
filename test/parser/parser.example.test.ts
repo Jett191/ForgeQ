@@ -11,9 +11,8 @@
  *      Ajv 之前优先返回更友好的错误码，而不是被 schema `minItems: 1`
  *      "吃掉"成 `SCHEMA_VIOLATION`（Req 1.10）。
  *   3. **legacy `answer` 兜底**：经过 schema 校验 + 重复检查的 bank 进入
- *      后处理：code 题在 `referenceCode` 缺省、`answer` 非空时把 `answer`
- *      映射为 `referenceCode`；qa 题同理映射到 `briefAnswer`；显式提供子
- *      类型字段或 `answer === ''` 的情况下不做改写（Req 1.1）。
+ *      后处理；两种题型在 `briefAnswer` 缺省、`answer` 非空时都把
+ *      `answer` 映射为 `briefAnswer`（Req 1.1）。
  *
  * 这是 EXAMPLE 测试（concrete inputs → expected outputs），与 PBT 互补，
  * 不引入 fast-check。覆盖 design.md 中 Parser 模块顶部注释列出的"错误归
@@ -191,8 +190,8 @@ describe('Parser EMPTY_QUESTION_BANK 短路 (Req 1.10)', () => {
   });
 });
 
-describe('Parser legacy answer 兜底 (Req 1.1)', () => {
-  it('code 题缺失 referenceCode 且 answer 非空时，将 answer 同步映射为 referenceCode', () => {
+describe('Parser legacy answer 统一兜底 (Req 1.1)', () => {
+  it('code 题缺失 briefAnswer 且 answer 非空时，将 answer 同步映射为 briefAnswer', () => {
     const codeQ = makeCodeQuestion({
       id: 'code-fallback',
       answer: 'return 42;',
@@ -208,7 +207,8 @@ describe('Parser legacy answer 兜底 (Req 1.1)', () => {
     if (out === undefined || out.type !== 'code') {
       throw new Error('expected first question to be a code question');
     }
-    expect(out.referenceCode).toBe('return 42;');
+    expect(out.briefAnswer).toBe('return 42;');
+    expect(out.referenceCode).toBeUndefined();
     // answer 字段保持原值不变，兜底是"补充"而非"替换"。
     expect(out.answer).toBe('return 42;');
   });
@@ -233,9 +233,7 @@ describe('Parser legacy answer 兜底 (Req 1.1)', () => {
     expect(out.answer).toBe('事件循环协调任务调度。');
   });
 
-  it('code 题已显式提供 referenceCode 时不被 answer 覆盖', () => {
-    // 兜底逻辑只在 `referenceCode === undefined` 时触发；显式提供时
-    // Parser 必须保持原值，否则会破坏"显式优先"语义。
+  it('code 题的历史 referenceCode 保留，但答案统一兜底到 briefAnswer', () => {
     const codeQ = makeCodeQuestion({
       id: 'code-explicit',
       answer: 'legacy answer',
@@ -252,6 +250,7 @@ describe('Parser legacy answer 兜底 (Req 1.1)', () => {
       throw new Error('expected first question to be a code question');
     }
     expect(out.referenceCode).toBe('explicit reference');
+    expect(out.briefAnswer).toBe('legacy answer');
     expect(out.answer).toBe('legacy answer');
   });
 
@@ -275,7 +274,7 @@ describe('Parser legacy answer 兜底 (Req 1.1)', () => {
     expect(out.answer).toBe('legacy answer');
   });
 
-  it('answer === "" 时不触发兜底（保留 referenceCode / briefAnswer 缺省）', () => {
+  it('answer === "" 时两种题型都不生成 briefAnswer', () => {
     // design.md "Parser legacy 兜底"明确要求空 answer 不写入子类型字段，
     // 让 UI 层退化为"暂无参考答案"文案，而不是渲染一个空字符串。
     const codeQ = makeCodeQuestion({ id: 'code-empty', answer: '' });
@@ -293,7 +292,7 @@ describe('Parser legacy answer 兜底 (Req 1.1)', () => {
     if (qa === undefined || qa.type !== 'qa') {
       throw new Error('expected second question to be a qa question');
     }
-    expect(code.referenceCode).toBeUndefined();
+    expect(code.briefAnswer).toBeUndefined();
     expect(qa.briefAnswer).toBeUndefined();
   });
 });

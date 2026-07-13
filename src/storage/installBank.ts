@@ -1,11 +1,9 @@
 /**
- * installBank 五阶段事务（Task 13.2）
+ * installBank 四阶段新增事务（Task 13.2）
  *
- * `Storage.installBank` 的内部实现：把一个新解析出的 `QuestionBank` 安全切换为
- * 当前激活题库，旧 bank（若存在）被搬入 `trash/` 而非立即硬删。任意阶段失败时
- * 按 design.md > Architecture > 导入题库（安全切换）规定的回滚路径恢复，保证
- * 用户视角下"旧 bank 完整可见 / 新 bank 不可见"或"新 bank 完整生效"两种最终态
- * 之一。
+ * `Storage.installBank` 的内部实现：把一个新解析出的 `QuestionBank` 新增到题库
+ * 列表并切换为当前激活题库。已有 bank 与它们的 user-data 始终保留。任意阶段
+ * 失败时按回滚路径恢复，保证旧题库列表不受影响。
  *
  * ## 阶段划分（与 design.md 序列图一一对应）
  *
@@ -18,35 +16,28 @@
  *     `BANK_FS_WRITE_FAILED`；旧 bank 完全不变。
  *
  *   Phase 3 — 切元数据：`metaStore.writeAtomic(nextMeta)`，其中
- *     `nextMeta.currentBankId = newId` 且 `banks` 数组追加 newId 的 summary。
+ *     `nextMeta.currentBankId = newId` 且 `banks` 数组追加 newId 的 summary，
+ *     已有 summary 全部保留。
  *     失败：依次回滚 Phase 1 / 2，然后抛 `META_CORRUPT`；旧 bank 完全不变。
  *
  *   Phase 4 — 同步 globalState：`globalState.update('fip:currentBankId', newId)`。
  *     失败：仅记录 warning，不回滚。`meta.json` 已经是真理源（Property 18）；
  *     globalState 仅是快速读取镜像，下次 bootstrap 会自我修正。
  *
- *   Phase 5 — 旧 bank 入 trash：`trash.moveToTrash([banks/<oldId>, user-data/<oldId>], { bankId: oldId })`。
- *     失败：仅记录 warning，不回滚。从用户视角看 `meta.json` 已经切换、旧 bank
- *     不再可见；磁盘上的残留物会在下次 `Trash.purge` 中由 7 日窗口外的清理或
- *     手动恢复消化。
- *
  * ## 失败语义
  *
  * 所有失败统一抛出 `InstallBankError`（见下），调用方 `Storage.installBank`
  * 把它转译为 `DomainError` 联合并由上层 UI 提示。Phase 4 / 5 不抛错，只 warn。
  *
- * Validates: Requirements 2.9（覆盖导入语义）, 11.4（覆盖导入安全切换）。
+ * Validates: Requirements 2.9（新增导入语义）, 11.4（导入安全切换）。
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import * as vscode from 'vscode';
-
 import type { BankMeta, BankSource, BankSummary } from '../types/bankMeta';
 import type { DomainError } from '../types/errors';
 import type { QuestionBank } from '../types/question';
 import type { BankStore } from './bankStore';
 import type { MetaStore } from './metaStore';
-import type { Trash } from './trash';
 import type { UserDataStore } from './userDataStore';
 
 /**
@@ -104,13 +95,9 @@ export interface InstallBankDeps {
   readonly meta: MetaStore;
   readonly banks: BankStore;
   readonly userData: UserDataStore;
-  readonly trash: Trash;
   readonly globalState: { update(key: string, value: unknown): Thenable<void> };
   /** 当前内存中 `BankMeta` 快照；installBank 基于其计算 nextMeta。 */
   readonly currentMeta: BankMeta;
-  /** trash baseUri（用于构造 banks/<oldId>、user-data/<oldId> 的 URI 列表，避免暴露内部目录布局）。 */
-  readonly banksBaseUri: vscode.Uri;
-  readonly userDataBaseUri: vscode.Uri;
   /** 仅测试可注入：UUID 生成器与时间源；生产保持默认。 */
   readonly newId?: () => string;
   readonly now?: () => number;
@@ -123,7 +110,7 @@ export interface InstallBankResult {
 }
 
 /**
- * 执行五阶段安全切换。
+ * 执行四阶段安全新增并切换。
  *
  * @throws {InstallBankError} Phase 1 / 2 / 3 失败时抛出，已自动回滚到失败前状态。
  */
@@ -143,8 +130,6 @@ export async function installBank(
     importedAt,
     ...(source?.fileName !== undefined ? { source: { fileName: source.fileName } } : {}),
   };
-
-  const oldId = deps.currentMeta.currentBankId;
 
   // ---- Phase 1: 写新 bank ----
   try {
@@ -177,21 +162,11 @@ export async function installBank(
   }
 
   // ---- Phase 3: 切元数据 ----
-  // 注意：currentMeta.banks 中可能仍含 oldId 的 summary —— 我们保留它直到 Phase 5
-  // 完成搬入 trash。但 currentBankId 已切换，UI 与 BankRegistry.list() 会按新 meta
-  // 渲染。等 Phase 5 之后再做一次 meta 写入移除 oldId 的 summary，则会让 meta.json
-  // 写入两次；为了避免两次 fs 写，本实现选择 *在 Phase 3 一次写入完成* 的策略：
-  //   - banks 数组追加新 summary；
-  //   - 如果 oldId 存在且 oldId !== newId，则同时把 oldId 的 summary 移除。
-  // 这样 Phase 5 仅做 trash 搬移，不再触碰 meta.json。
-  const filteredBanks =
-    oldId !== undefined
-      ? deps.currentMeta.banks.filter((b) => b.id !== oldId)
-      : deps.currentMeta.banks.slice();
+  // 新增题库只追加 summary；已有题库及其学习数据不做任何删除或迁移。
   const nextMeta: BankMeta = {
     ...deps.currentMeta,
     currentBankId: newId,
-    banks: [...filteredBanks, summary],
+    banks: [...deps.currentMeta.banks, summary],
   };
   try {
     await deps.meta.writeAtomic(nextMeta);
@@ -225,22 +200,6 @@ export async function installBank(
       '[installBank] phase 4: globalState.update failed (non-fatal, meta.json is source of truth):',
       err,
     );
-  }
-
-  // ---- Phase 5: 旧 bank 入 trash ----
-  // 仅当存在旧 bank 且与新 bank 不同（同一进程内重复 install 同一 newId 不可能，
-  // 但 oldId === newId 的防御性兜底也不浪费太多代码）。失败仅警告，不阻塞主流程。
-  if (oldId !== undefined && oldId !== newId) {
-    const oldBankUri = vscode.Uri.joinPath(deps.banksBaseUri, oldId);
-    const oldUserDataUri = vscode.Uri.joinPath(deps.userDataBaseUri, oldId);
-    try {
-      await deps.trash.moveToTrash([oldBankUri, oldUserDataUri], { bankId: oldId });
-    } catch (err) {
-      console.warn(
-        '[installBank] phase 5: moveToTrash failed (non-fatal, old bank no longer visible via meta.json):',
-        err,
-      );
-    }
   }
 
   return { summary, nextMeta };

@@ -6,11 +6,11 @@
  * 任何变更必须先回写到 design.md 后再同步本文件。
  *
  * 设计要点：
- * - `Question` 是按 `type` 区分的 discriminated union（`'code' | 'qa'`）。
+ * - `Question` 仍用 `type` 区分 `'code' | 'qa'`，但题型只用于标识与筛选。
  * - `QuestionBase` 保留 legacy 字段 `answer: string`，用于向后兼容
  *   Req 1.1（已批准）所要求的 `answer` 必填语义；新模型在此基础上扩展。
- * - 子类型字段（`referenceCode` / `briefAnswer` 等）作为可选补充字段；
- *   `Parser` 在解析后会用 legacy `answer` 兜底缺失的 `referenceCode` / `briefAnswer`。
+ * - 两种题型共享同一套 Markdown 答案字段与展示流程。
+ * - 历史代码题字段继续作为可选兼容字段保留，但不再决定练习页面行为。
  *
  * Validates: Requirements 1.1, 9.1, 8.1
  */
@@ -27,7 +27,7 @@ export type Difficulty = 'easy' | 'medium' | 'hard';
  * - `unlearned`：默认值，从未练习。
  * - `learning`：学习中。
  * - `mastered`：已掌握；切换到该值时 `wrongFlag` 联动置为 false（Req 9.4）。
- * - `not_mastered`：未掌握；切换到该值时 `wrongFlag` 联动置为 true（Req 9.3）。
+ * - `not_mastered`：未掌握；与独立的错题标记互不等同。
  */
 export type MasteryStatus = 'unlearned' | 'learning' | 'mastered' | 'not_mastered';
 
@@ -37,6 +37,7 @@ export type MasteryStatus = 'unlearned' | 'learning' | 'mastered' | 'not_mastere
  * 字段长度 / 元素个数约束见 Req 1.1：
  * - `id`：1-100 字符，区分大小写唯一。
  * - `title`：1-200 字符。
+ * - `shortTitle`：可选，1-60 字符，仅用于侧栏紧凑展示。
  * - `content`：≤20000 字符，markdown。
  * - `category`：1-100 字符。
  * - `tags`：0-50 个元素。
@@ -49,6 +50,8 @@ export interface QuestionBase {
   type: QuestionType;
   /** 题目标题，1-200 字符。 */
   title: string;
+  /** 侧栏短标题，1-60 字符；缺省时回退到 title。 */
+  shortTitle?: string;
   /** 题面 markdown 内容，≤20000 字符。 */
   content: string;
   /** 题目分类，1-100 字符。 */
@@ -62,12 +65,25 @@ export interface QuestionBase {
    * 新模型保留以保证 round-trip 与历史 JSON 兼容。
    */
   answer: string;
+  /** 关键词集合（用于答题点检查 / 提示）。 */
+  keywords?: string[];
+  /** 简洁答案；缺省时由 Parser 用 legacy `answer` 兜底。 */
+  briefAnswer?: string;
+  /** 详细答案 markdown。 */
+  detailedAnswer?: string;
+  /** 追问及其答案。 */
+  followUps?: Array<{
+    question: string;
+    /** markdown。 */
+    answer?: string;
+  }>;
 }
 
 /**
  * 代码题：`type === 'code'`。
  *
- * 子类型字段全部可选；`referenceCode` 缺省时由 Parser 用 legacy `answer` 兜底。
+ * `type` 只用于题型标签与筛选；题面、练习文件和答案展示与问答题相同。
+ * 下列代码专属字段仅用于兼容已有题库，不再参与页面路由。
  */
 export interface CodeQuestion extends QuestionBase {
   type: 'code';
@@ -93,23 +109,9 @@ export interface CodeQuestion extends QuestionBase {
 
 /**
  * 问答题：`type === 'qa'`。
- *
- * 子类型字段全部可选；`briefAnswer` 缺省时由 Parser 用 legacy `answer` 兜底。
  */
 export interface QAQuestion extends QuestionBase {
   type: 'qa';
-  /** 关键词集合（用于答题点检查 / 提示）。 */
-  keywords?: string[];
-  /** 简洁答案；缺省时由 Parser 用 legacy `answer` 兜底。 */
-  briefAnswer?: string;
-  /** 详细答案 markdown。 */
-  detailedAnswer?: string;
-  /** 追问及其答案。 */
-  followUps?: Array<{
-    question: string;
-    /** markdown。 */
-    answer?: string;
-  }>;
 }
 
 /**

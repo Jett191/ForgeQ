@@ -3,7 +3,7 @@
 // 该属性测试覆盖 design.md 中 Property 6 全部三条断言：
 //   ① R 是 Q 的子序列（保留 Q 中的相对顺序）；
 //   ② q∈R 当且仅当对应 LearningState 满足 k 的谓词
-//      （unmastered: mastery==='not_mastered'；
+//      （unmastered: mastery==='not_mastered' && wrongFlag!==true；
 //        favorite:   favoriteFlag===true；
 //        wrong:      wrongFlag===true）；
 //   ③ R 中无重复（基于 q.id）。
@@ -32,7 +32,8 @@ const expectedPredicate: Record<
   ReviewKind,
   (state: LearningState | undefined) => boolean
 > = {
-  unmastered: (s) => s?.mastery === 'not_mastered',
+  unmastered: (s) =>
+    s?.mastery === 'not_mastered' && s.wrongFlag !== true,
   favorite: (s) => s?.favoriteFlag === true,
   wrong: (s) => s?.wrongFlag === true,
 };
@@ -105,6 +106,26 @@ describe('Property 6: ReviewSet 谓词-保序-子集', () => {
 
           // ③ R 中无重复（基于 id）。
           expect(new Set(R.map((q) => q.id)).size).toBe(R.length);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  it('未掌握与错题集合始终互斥', () => {
+    fc.assert(
+      fc.property(
+        arbQuestionBank.chain((bank) =>
+          fc.tuple(fc.constant(bank), arbLearningStateMap(bank.questions)),
+        ),
+        ([bank, learning]) => {
+          const unmasteredIds = new Set(
+            buildReviewSet(bank.questions, learning, 'unmastered').map((q) => q.id),
+          );
+          const wrongIds = buildReviewSet(bank.questions, learning, 'wrong').map(
+            (q) => q.id,
+          );
+          expect(wrongIds.some((id) => unmasteredIds.has(id))).toBe(false);
         },
       ),
       { numRuns: 100 },

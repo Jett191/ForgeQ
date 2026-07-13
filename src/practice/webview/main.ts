@@ -6,16 +6,14 @@
  * UI 结构（与 panel.ts 内嵌 HTML 同步）：
  *   - .q-head（meta 徽章 + 标题 + 收藏按钮）
  *   - #question-content.md（题面 markdown 渲染）
- *   - #test-cases（仅代码题）
  *   - .answer-toggle > #btn-show-answer（点击展开答案；展开后整体隐藏）
  *   - #answer-area（含 #btn-collapse-answer 圆形 ↑ 按钮 + #answer-content）
- *   - #follow-ups（问答题追问）
+ *   - #follow-ups（题目追问）
  *
  * 渲染策略：题面 / 详细解析 / 简答 / 追问答案均走 `renderMarkdown`，
- * 其余短字符串字段走 `escapeHtml`；代码题参考答案走 `highlight()` 着色。
+ * 其余短字符串字段走 `escapeHtml`。题型只改变徽章文字与筛选结果。
  */
 
-import { highlight } from './highlight.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
 
 declare function acquireVsCodeApi(): {
@@ -47,20 +45,11 @@ interface Question {
   category: string;
   tags: string[];
   difficulty: 'easy' | 'medium' | 'hard' | string;
-  language?: string;
   answer: string;
-  testCases?: Array<{
-    name?: string;
-    input?: string;
-    expected?: string;
-    description?: string;
-  }>;
   followUps?: Array<{ question: string; answer?: string }>;
 }
 
 const vscode = acquireVsCodeApi();
-
-let currentQuestion: Question | undefined;
 
 function $(id: string): HTMLElement | null {
   return document.getElementById(id);
@@ -152,7 +141,7 @@ function masteryIcon(m: string): string {
     case 'mastered':
       return '✓';
     case 'not_mastered':
-      return '✗';
+      return '◔';
     case 'learning':
       return '◔';
     case 'unlearned':
@@ -162,8 +151,6 @@ function masteryIcon(m: string): string {
 }
 
 function renderQuestion(question: Question): void {
-  currentQuestion = question;
-
   const titleEl = $('question-title');
   if (titleEl) titleEl.textContent = question.title;
 
@@ -193,46 +180,12 @@ function renderQuestion(question: Question): void {
         }
       }
     }
-    if (question.type === 'code' && question.language) {
-      parts.push(`<span class="tag">${escapeHtml(question.language)}</span>`);
-    }
     metaEl.innerHTML = parts.join('');
   }
 
   // 题面：markdown 渲染
   const contentEl = $('question-content');
   if (contentEl) contentEl.innerHTML = renderMarkdown(question.content);
-
-  // 测试用例
-  const testCasesEl = $('test-cases');
-  if (testCasesEl) {
-    if (
-      question.type === 'code' &&
-      Array.isArray(question.testCases) &&
-      question.testCases.length > 0
-    ) {
-      let html = '<h2>测试用例</h2>';
-      for (const tc of question.testCases) {
-        html += '<div class="test-case">';
-        if (tc.name) {
-          html += `<div class="test-case-name">${escapeHtml(tc.name)}</div>`;
-        }
-        if (tc.input) {
-          html += `<div class="test-case-row"><span class="test-case-label">输入</span><code>${escapeHtml(tc.input)}</code></div>`;
-        }
-        if (tc.expected) {
-          html += `<div class="test-case-row"><span class="test-case-label">预期</span><code>${escapeHtml(tc.expected)}</code></div>`;
-        }
-        if (tc.description) {
-          html += `<div class="test-case-row"><span class="test-case-label">说明</span><span>${escapeHtml(tc.description)}</span></div>`;
-        }
-        html += '</div>';
-      }
-      testCasesEl.innerHTML = html;
-    } else {
-      testCasesEl.innerHTML = '';
-    }
-  }
 
   // 切题时重置答案区到未展开状态
   hideAnswerSection();
@@ -243,8 +196,8 @@ function renderQuestion(question: Question): void {
  *
  * 标题栏右侧的收藏星按钮 + 答案 toggle 行右侧的学习状态浮动按钮组：
  *  - 收藏：active class + aria 文案；
- *  - 学习状态主按钮：is-${mastery} class（决定边框/前景色）+ 中心字符更新；
- *  - 4 个选项按钮：当前选中态加 .active 高亮（颜色由 mastery 类型决定）。
+ *  - 学习状态主按钮：显示掌握状态；错题标记开启时优先显示错题；
+ *  - 掌握状态与错题按钮分别维护自己的 active 高亮。
  *
  * 入参类型仍保留完整 LearningState，扩展端协议不变。
  */
@@ -259,7 +212,7 @@ function updateLearningUI(learning: LearningState): void {
     favBtn.setAttribute('title', learning.favoriteFlag ? '取消收藏' : '收藏');
   }
 
-  // 4 个选项按钮的 active class
+  // 掌握状态按钮的 active class（learning 仅为旧数据兼容，不再提供按钮）
   const masteryValues = ['unlearned', 'learning', 'mastered', 'not_mastered'];
   for (const m of masteryValues) {
     const btn = document.querySelector(
@@ -269,15 +222,23 @@ function updateLearningUI(learning: LearningState): void {
     btn.classList.toggle('active', m === learning.mastery);
   }
 
+  const wrongBtn = document.querySelector('[data-wrong]') as HTMLElement | null;
+  if (wrongBtn) {
+    wrongBtn.classList.toggle('active', learning.wrongFlag);
+    wrongBtn.setAttribute('aria-label', learning.wrongFlag ? '取消错题标记' : '标记为错题');
+    wrongBtn.setAttribute('title', learning.wrongFlag ? '取消错题标记' : '标记为错题');
+  }
+
   // 主触发按钮：清掉所有 is-* 再加当前 mastery 的 class，更新中心字符
   const trigger = $('btn-mastery');
   if (trigger) {
     for (const m of masteryValues) {
       trigger.classList.remove(`is-${m}`);
     }
-    trigger.classList.add(`is-${learning.mastery}`);
+    trigger.classList.remove('is-wrong');
+    trigger.classList.add(learning.wrongFlag ? 'is-wrong' : `is-${learning.mastery}`);
     const icon = trigger.querySelector('.mastery-icon');
-    if (icon) icon.textContent = masteryIcon(learning.mastery);
+    if (icon) icon.textContent = learning.wrongFlag ? '✗' : masteryIcon(learning.mastery);
   }
 }
 
@@ -285,8 +246,7 @@ interface AnswerPayload {
   questionType: 'code' | 'qa';
   answer:
     | {
-        kind: 'reference';
-        code?: string;
+      kind: 'reference';
         briefAnswer?: string;
         detailedAnswer?: string;
         followUps?: Array<{ question: string; answer?: string }>;
@@ -308,30 +268,20 @@ function showAnswer(payload: AnswerPayload): void {
     )}</p>`;
   } else {
     let html = '<span class="answer-label">参考答案</span>';
-    if (payload.questionType === 'code') {
-      const lang =
-        currentQuestion && currentQuestion.type === 'code'
-          ? currentQuestion.language ?? ''
-          : '';
-      const langClass = lang ? ` class="lang-${escapeHtml(lang)}"` : '';
-      html += `<pre><code${langClass}>${highlight(ans.code ?? '', lang)}</code></pre>`;
-    } else {
-      if (ans.briefAnswer) {
-        html += `<div class="brief md">${renderMarkdown(ans.briefAnswer)}</div>`;
-      }
-      if (ans.detailedAnswer) {
-        html += `<div class="detailed md"><h3>详细解析</h3>${renderMarkdown(ans.detailedAnswer)}</div>`;
-      }
+    if (ans.briefAnswer) {
+      html += `<div class="brief md">${renderMarkdown(ans.briefAnswer)}</div>`;
+    }
+    if (ans.detailedAnswer) {
+      html += `<div class="detailed md"><h3>详细解析</h3>${renderMarkdown(ans.detailedAnswer)}</div>`;
     }
     content.innerHTML = html;
   }
 
-  // 追问（仅 QA 题且 reference）
+  // 追问（两种题型共用）
   const followUpsEl = $('follow-ups');
   if (followUpsEl) {
     if (
       ans.kind === 'reference' &&
-      payload.questionType === 'qa' &&
       Array.isArray(ans.followUps) &&
       ans.followUps.length > 0
     ) {
@@ -374,6 +324,10 @@ function showStatus(msg: string): void {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  $('btn-open-project')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'openProject' });
+  });
+
   $('btn-show-answer')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'requestAnswer' });
   });
@@ -405,6 +359,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (value) vscode.postMessage({ type: 'setMastery', value });
       hideMasteryOptions();
     });
+  });
+
+  document.querySelector('[data-wrong]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    vscode.postMessage({ type: 'toggleWrong' });
+    hideMasteryOptions();
   });
 
   // 点击 fab 之外的任意位置关闭浮动菜单（不阻止事件，让原本的点击仍生效）
@@ -443,6 +403,10 @@ window.addEventListener('message', (event) => {
     }
     case 'masteryAck': {
       if (!msg.ok) showStatus(`掌握状态更新失败: ${msg.reason ?? '未知错误'}`);
+      break;
+    }
+    case 'wrongAck': {
+      if (!msg.ok) showStatus(`错题标记更新失败: ${msg.reason ?? '未知错误'}`);
       break;
     }
   }

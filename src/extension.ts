@@ -31,9 +31,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   // 2. 实例化核心组件
   const registry = new BankRegistry(storage, ctx.globalState);
-  const listProvider = new QuestionListProvider();
-  const reviewProvider = new ReviewProvider();
-  const practiceController = new PracticeController(ctx, storage, state);
+  const listProvider = new QuestionListProvider({ extensionUri: ctx.extensionUri });
+  const reviewProvider = new ReviewProvider(ctx.extensionUri);
+  const practiceController = new PracticeController(ctx, storage, state, {
+    onLearningChanged: (bankId) => {
+      if (state.currentBank?.bankId !== bankId) return;
+      listProvider.refresh();
+      reviewProvider.refresh();
+    },
+  });
 
   // 3. 初始数据注入
   if (state.currentBank) {
@@ -53,7 +59,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   // 5. 注册命令
   const importCmd = vscode.commands.registerCommand(
     'frontendInterview.import',
-    () => importBank(ctx, storage, registry, state, listProvider),
+    () => importBank(ctx, storage, registry, state, listProvider, reviewProvider),
   );
 
   const openQuestionCmd = vscode.commands.registerCommand(
@@ -68,7 +74,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   const removeBankCmd = vscode.commands.registerCommand(
     'frontendInterview.removeBank',
-    () => removeBank(registry, state, listProvider, reviewProvider),
+    () => removeBank(registry, storage, state, listProvider, reviewProvider),
   );
 
   const reviewUnmasteredCmd = vscode.commands.registerCommand(

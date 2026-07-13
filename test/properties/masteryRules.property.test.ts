@@ -2,9 +2,8 @@
 //
 // 验证 design.md "Correctness Properties > Property 8" 描述的五条不变量：
 //   ① mastery === next
-//   ② next === 'not_mastered'  ⇒ wrongFlag === true
-//   ③ next === 'mastered'      ⇒ wrongFlag === false
-//   ④ next ∈ {unlearned, learning} ⇒ wrongFlag === prev.wrongFlag
+//   ② next === 'mastered'      ⇒ wrongFlag === false
+//   ③ 其它掌握状态不改变 wrongFlag（错题标记独立切换）
 //   ⑤ 其余字段（favoriteFlag / hasNote / lastPracticedAt）保持不变
 //
 // 同时确保实现是纯函数：
@@ -34,13 +33,10 @@ describe('Property 8: MasteryRules 状态机不变量', () => {
         // 不变量 ①：mastery 必须等于目标值。
         expect(result.mastery).toBe(next);
 
-        // 不变量 ②/③/④：wrongFlag 联动规则。
-        if (next === 'not_mastered') {
-          expect(result.wrongFlag).toBe(true);
-        } else if (next === 'mastered') {
+        // 不变量 ②/③：已掌握清除错题，其它掌握状态保持错题标记。
+        if (next === 'mastered') {
           expect(result.wrongFlag).toBe(false);
         } else {
-          // next ∈ {'unlearned', 'learning'}
           expect(result.wrongFlag).toBe(prev.wrongFlag);
         }
 

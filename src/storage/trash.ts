@@ -1,16 +1,15 @@
 /**
  * Trash（Task 12.1）
  *
- * `Trash` 是 Storage 子层中负责 **隔离区** 的模块。覆盖导入 / 移除题库时，旧
- * `banks/<oldBankId>/` 与 `user-data/<oldBankId>/` 不会被立即硬删，而是被搬移到
+ * `Trash` 是 Storage 子层中负责 **隔离区** 的模块。移除题库时，对应的
+ * `banks/<bankId>/` 与 `user-data/<bankId>/` 不会被立即硬删，而是被搬移到
  * `<trashRoot>/<bankId>-<timestamp>/` 下，由后台 `purge()` 在时间窗口外异步清理。
  *
- * 这条路径同时承载两个语义：
+ * 这条路径承载两个语义：
  *
- *   1. **覆盖导入安全切换**（design.md > Overview > 覆盖导入安全切换）：一旦
- *      `meta.json` 切换到新 bankId，旧 bank 在所有读路径上都不再可见，等价于
- *      "已删除"（满足 Req 2.9 / 11.4 的用户视角语义），物理删除可以延后做。
- *   2. **数据安全保险**：即便 `meta.json` 切换之后立刻进程崩溃，旧数据仍然完整
+ *   1. **题库删除隔离**：用户确认删除后，bank 在所有正常读路径上不再可见，
+ *      物理删除可以延后做。
+ *   2. **数据安全保险**：即便删除流程之后立刻进程崩溃，旧数据仍然完整
  *      保留在 `trash/` 下，运维 / 用户可以离线恢复。
  *
  * ## 文件布局
@@ -35,8 +34,7 @@
  *   2. `createDirectory(destDir)` 确保 trash 根目录及 `<bankId>-<timestamp>/` 存在。
  *   3. 对每个 `src` 计算 `<destDir>/<basename(src)>`，调用
  *      {@link renameDirAtomic} 把整目录搬过去。`renameDirAtomic` 在跨分区 / 平台
- *      限制下退化为 copy+delete，调用方（`Storage.installBank` Phase 5）已把
- *      moveToTrash 的失败定位为 "warning，不阻塞主流程"。
+ *      限制下退化为 copy+delete，由调用方决定失败处理策略。
  *   4. 任意 `src` 不存在（FileNotFound / ENOENT）时静默跳过，与 `safeDelete` 的
  *      "幂等" 语义保持一致 —— 旧 bank 可能 user-data 从未创建，moveToTrash 不应
  *      因此而失败。
@@ -52,7 +50,7 @@
  *   5. 删除单个目录失败仅 `console.warn`，继续清理其它目录，不让单个 IO 错误
  *      把整个 purge 拖垮（启动期由 Activation 调用时尤其重要，不能阻塞激活）。
  *
- * Validates: Requirements 2.9（覆盖导入旧数据隔离）, 11.4（覆盖导入语义）。
+ * Validates: Requirements 2.9（题库删除隔离）, 11.4（数据安全）。
  */
 
 import * as vscode from 'vscode';

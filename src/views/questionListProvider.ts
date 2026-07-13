@@ -5,14 +5,13 @@
  *
  * 主要能力：
  *  - 顶层 bank 标题节点；其下默认按 `category` 分组（每组显示题数）；可一键切换为扁平列表。
- *  - 题目节点显示：mastery 图标 / 难度色块文字 / 收藏与笔记小标记。
+ *  - 题目节点只显示侧栏标题与 mastery 图标；题型、难度等信息保留在悬停提示中。
  *  - 集成 FilterController（500ms debounce refresh），并在 bank 节点 description 中以中文摘要展示当前筛选条件。
  *  - 单击题目节点触发 `frontendInterview.openQuestion`。
  *
  * 设计要点：
  *  - `groupByCategory` 默认 true，当只有一个分类时自动跳过分类层（避免出现"100 道题挂在一个 JavaScript 文件夹下"的多余一层）。
  *  - 顺序保留：每个分类内部题目按 `QuestionBank.questions` 原始顺序排列，分类列出顺序由分类首次出现位置决定。
- *  - 难度色块在 description 里通过文本符号近似呈现（VS Code TreeItem description 不支持富文本，只能靠图标 + 简短文字）。
  *
  * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.9, 4.10, 8.4, 9.5
  */
@@ -20,11 +19,12 @@
 import * as vscode from 'vscode';
 
 import type { FilterState } from '../filter/filter.js';
-import { applyFilter, isActive } from '../filter/filter.js';
+import { applyFilter, clearDimension, isActive, normalizeCategory } from '../filter/filter.js';
 import type { LearningState } from '../types/learning.js';
 import type { Difficulty, Question, QuestionBank, QuestionType } from '../types/question.js';
 import type { BankSummary } from '../types/bankMeta.js';
-import { statusToIcon } from './iconRegistry.js';
+import { learningStateVisualStatus, statusToIcon } from './iconRegistry.js';
+import { sidebarQuestionTitle } from './questionDisplay.js';
 
 // ---------------------------------------------------------------------------
 // TreeItem 类型
@@ -91,9 +91,15 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
   private _groupByCategory = true;
   private _refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private _debounceMs: number;
+  private readonly _extensionUri: vscode.Uri | undefined;
 
-  constructor(options?: { debounceMs?: number; groupByCategory?: boolean }) {
+  constructor(options?: {
+    debounceMs?: number;
+    groupByCategory?: boolean;
+    extensionUri?: vscode.Uri;
+  }) {
     this._debounceMs = options?.debounceMs ?? 500;
+    this._extensionUri = options?.extensionUri;
     if (options?.groupByCategory !== undefined) {
       this._groupByCategory = options.groupByCategory;
     }
@@ -105,9 +111,17 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
     summary: BankSummary | undefined,
     learning: ReadonlyMap<string, LearningState>,
   ): void {
+    const bankChanged = this._bankSummary?.id !== summary?.id;
     this._bank = bank;
     this._bankSummary = summary;
     this._learningMap = learning;
+    if (bankChanged) {
+      this._filter = {};
+      if (this._refreshTimer !== undefined) {
+        clearTimeout(this._refreshTimer);
+        this._refreshTimer = undefined;
+      }
+    }
     this.refresh();
   }
 
@@ -133,14 +147,22 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
     return this._groupByCategory;
   }
 
-  /** 返回当前题库内所有分类（按首次出现顺序），供 QuickPick 用。 */
+  /**
+   * 返回当前其它筛选条件下可用的分类（按首次出现顺序），供 QuickPick 用。
+   * 分类自身的筛选不会参与计算，确保用户始终可以改选其它分类。
+   */
   getCategoriesInBank(): string[] {
+    const questions = applyFilter(
+      this._bank?.questions ?? [],
+      clearDimension(this._filter, 'category'),
+    );
     const set = new Set<string>();
     const list: string[] = [];
-    for (const q of this._bank?.questions ?? []) {
-      if (!set.has(q.category)) {
-        set.add(q.category);
-        list.push(q.category);
+    for (const q of questions) {
+      const key = normalizeCategory(q.category);
+      if (!set.has(key)) {
+        set.add(key);
+        list.push(q.category.trim());
       }
     }
     return list;
@@ -203,27 +225,14 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
       case 'question': {
         const q = element.question;
         const item = new vscode.TreeItem(
-          q.title,
+          sidebarQuestionTitle(q),
           vscode.TreeItemCollapsibleState.None,
         );
 
         // mastery 图标
         const ls = element.learning;
-        const mastery = ls?.mastery ?? 'unlearned';
-        item.iconPath = statusToIcon(mastery);
-
-        // description: 类型 · 难度 [· 分类（仅扁平模式且筛选未限定分类时显示）] [收藏 / 笔记标记]
-        const descParts: string[] = [];
-        descParts.push(TYPE_LABEL[q.type]);
-        descParts.push(DIFFICULTY_LABEL[q.difficulty]);
-        if (!this._groupByCategory) {
-          descParts.push(q.category);
-        }
-        const flags: string[] = [];
-        if (ls?.favoriteFlag) flags.push('★');
-        if (ls?.hasNote) flags.push('📝');
-        if (flags.length > 0) descParts.push(flags.join(''));
-        item.description = descParts.join(' · ');
+        const visualStatus = learningStateVisualStatus(ls);
+        item.iconPath = statusToIcon(visualStatus, this._extensionUri);
 
         // tooltip
         const tooltipLines = [
@@ -289,15 +298,19 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
 
       // 分类分组：当前筛选已锁定单一 category 时自动跳过分类层
       const lockedCategory = isActive(this._filter, 'category');
-      const grouped: Map<string, Question[]> = new Map();
+      const grouped = new Map<string, { category: string; questions: Question[] }>();
       for (const q of filtered) {
-        const list = grouped.get(q.category);
-        if (list) list.push(q);
-        else grouped.set(q.category, [q]);
+        const key = normalizeCategory(q.category);
+        const group = grouped.get(key);
+        if (group) {
+          group.questions.push(q);
+        } else {
+          grouped.set(key, { category: q.category.trim(), questions: [q] });
+        }
       }
 
       if (this._groupByCategory && !lockedCategory && grouped.size > 1) {
-        return [...grouped.entries()].map(([category, questions]) => ({
+        return [...grouped.values()].map(({ category, questions }) => ({
           kind: 'category' as const,
           category,
           questions,

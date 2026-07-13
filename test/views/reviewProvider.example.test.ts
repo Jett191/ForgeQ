@@ -65,6 +65,7 @@ const bank: QuestionBank = {
       id: 'q1',
       type: 'code',
       title: 'Q1',
+      shortTitle: '短标题 Q1',
       content: '',
       category: 'JS',
       tags: [],
@@ -117,26 +118,26 @@ describe('ReviewProvider example', () => {
     }
   });
 
-  it('快照不变性 - enter 后修改 learning 不影响已有快照', () => {
+  it('状态改变后实时重新归类，未掌握与错题不重复', () => {
     const provider = new ReviewProvider();
     const learning = new Map<string, LearningState>();
     learning.set('q1', {
       mastery: 'not_mastered',
       favoriteFlag: false,
-      wrongFlag: true,
+      wrongFlag: false,
       hasNote: false,
     });
     learning.set('q2', {
       mastery: 'not_mastered',
       favoriteFlag: false,
-      wrongFlag: true,
+      wrongFlag: false,
       hasNote: false,
     });
 
     provider.setBank(bank, learning);
     provider.enter('unmastered');
 
-    // Get snapshot
+    // 初始时 q1、q2 都只属于未掌握。
     const topLevel = provider.getChildren(undefined);
     const unmasteredEntry = topLevel.find(
       (n) => n.kind === 'entry' && n.reviewKind === 'unmastered',
@@ -147,20 +148,43 @@ describe('ReviewProvider example', () => {
       .map((c) => (c as { kind: 'question'; question: { id: string } }).question.id);
     expect(ids1).toEqual(['q1', 'q2']);
 
-    // Modify learning after snapshot
-    learning.set('q3', {
+    // q1 改为错题，q2 改为已掌握，q3 改为未掌握。
+    learning.set('q1', {
       mastery: 'not_mastered',
       favoriteFlag: false,
       wrongFlag: true,
       hasNote: false,
     });
+    learning.set('q2', {
+      mastery: 'mastered',
+      favoriteFlag: false,
+      wrongFlag: false,
+      hasNote: false,
+    });
+    learning.set('q3', {
+      mastery: 'not_mastered',
+      favoriteFlag: false,
+      wrongFlag: false,
+      hasNote: false,
+    });
+    provider.refresh();
 
-    // Snapshot is still the same - q3 should NOT appear
+    // 未掌握按最新状态只剩 q3。
     const children2 = provider.getChildren(unmasteredEntry);
     const ids2 = children2
       .filter((c) => c.kind === 'question')
       .map((c) => (c as { kind: 'question'; question: { id: string } }).question.id);
-    expect(ids2).toEqual(['q1', 'q2']);
+    expect(ids2).toEqual(['q3']);
+
+    // 错题按最新状态只包含 q1，与未掌握集合没有交集。
+    const wrongEntry = topLevel.find(
+      (n) => n.kind === 'entry' && n.reviewKind === 'wrong',
+    )!;
+    const wrongIds = provider
+      .getChildren(wrongEntry)
+      .filter((c) => c.kind === 'question')
+      .map((c) => (c as { kind: 'question'; question: { id: string } }).question.id);
+    expect(wrongIds).toEqual(['q1']);
   });
 
   it('加载失败 -> 显示加载失败消息', () => {
@@ -215,5 +239,14 @@ describe('ReviewProvider example', () => {
       .filter((c) => c.kind === 'question')
       .map((c) => (c as { kind: 'question'; question: { id: string } }).question.id);
     expect(ids).toEqual(['q1', 'q2']);
+
+    const first = children[0]!;
+    expect(first.kind).toBe('question');
+    if (first.kind === 'question') {
+      const item = provider.getTreeItem(first);
+      expect(item.label).toBe('短标题 Q1');
+      expect(item.description).toBeUndefined();
+      expect(item.tooltip).toBe('Q1');
+    }
   });
 });

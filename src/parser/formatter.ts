@@ -18,11 +18,8 @@
  * - **稳定字段顺序**：`JSON.stringify(value, null, 2)` 严格按 value 的属性
  *   插入顺序输出。本模块通过显式逐字段赋值的构造序列锁定 schema 中
  *   `QuestionBase` → 子类型 extras 的字段顺序，做到"相同输入恒得到相同字节"。
- * - **legacy `answer` 与子类型字段并存**：Parser 在解析 legacy 题库（仅
- *   `answer`、缺 `referenceCode` / `briefAnswer`）时会把 `answer` 兜底映射
- *   到对应子类型字段；本 Formatter 在序列化时同时输出二者，保证 round-trip
- *   下 Parser 在第二次解析时不再触发兜底（`referenceCode` / `briefAnswer`
- *   已显式存在），从而 B 与 parse(format(B)) 的字段集 / 值都保持一致。
+ * - **legacy `answer` 与统一答案字段并存**：Parser 在 `briefAnswer` 缺失时
+ *   会用 `answer` 兜底；Formatter 同时输出二者以保证 round-trip 稳定。
  *
  * ## 实现要点
  *
@@ -47,7 +44,6 @@
 
 import type {
   CodeQuestion,
-  QAQuestion,
   Question,
   QuestionBank,
 } from '../types/question.js';
@@ -80,12 +76,10 @@ export function format(bank: QuestionBank): string {
  * 字段顺序约定（与 `schema.ts > QuestionBase.required` + 子类型 extras 中
  * 字段声明顺序对齐，便于 diff 与人工核对）：
  *
- * 1. `QuestionBase` 必填字段：`id` → `type` → `title` → `content` →
- *    `category` → `tags` → `difficulty` → `answer`。
- * 2. 当 `type === 'code'` 时追加：`language` → `initialCode` → `codeTemplate`
+ * 1. `QuestionBase` 字段：`id` → `type` → `title` → 可选 `shortTitle` →
+ *    `content` → `category` → `tags` → `difficulty` → `answer` → 统一答案字段。
+ * 2. 为兼容历史题库，当 `type === 'code'` 时再追加：`language` → `initialCode` → `codeTemplate`
  *    → `referenceCode` → `testCases` → `solutionExplanation`。
- * 3. 当 `type === 'qa'` 时追加：`keywords` → `briefAnswer` → `detailedAnswer`
- *    → `followUps`。
  *
  * 任意可选字段为 `undefined` 时整键省略，输出对象上不出现该键。
  */
@@ -96,6 +90,7 @@ function formatQuestion(q: Question): Record<string, unknown> {
   out.id = q.id;
   out.type = q.type;
   out.title = q.title;
+  if (q.shortTitle !== undefined) out.shortTitle = q.shortTitle;
   out.content = q.content;
   out.category = q.category;
   // tags 数组在序列化时浅拷贝，避免外部修改原数组影响 JSON.stringify 的快照
@@ -103,12 +98,11 @@ function formatQuestion(q: Question): Record<string, unknown> {
   out.tags = q.tags.slice();
   out.difficulty = q.difficulty;
   out.answer = q.answer;
+  appendAnswerFields(out, q);
 
-  // ----- 子类型 extras：按 schema.ts 中字段声明顺序补齐 -----
+  // ----- 历史代码题 extras：仅用于旧题库 round-trip 兼容 -----
   if (q.type === 'code') {
     appendCodeExtras(out, q);
-  } else {
-    appendQAExtras(out, q);
   }
 
   return out;
@@ -141,14 +135,14 @@ function appendCodeExtras(
 }
 
 /**
- * 把 `QAQuestion` 的子类型字段按稳定顺序追加到输出对象。
+ * 把两种题型共享的答案字段按稳定顺序追加到输出对象。
  *
  * `keywords` 同样浅拷贝；`followUps` 内每条追问按稳定字段顺序
  * （`question` → `answer`）重新构造。
  */
-function appendQAExtras(
+function appendAnswerFields(
   out: Record<string, unknown>,
-  q: QAQuestion,
+  q: Question,
 ): void {
   if (q.keywords !== undefined) {
     out.keywords = q.keywords.slice();
@@ -182,7 +176,7 @@ function formatTestCase(
  * `question` 字段在 schema 中为必填，因此始终输出。
  */
 function formatFollowUp(
-  fu: NonNullable<QAQuestion['followUps']>[number],
+  fu: NonNullable<Question['followUps']>[number],
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   out.question = fu.question;
