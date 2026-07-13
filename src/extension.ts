@@ -74,7 +74,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   const removeBankCmd = vscode.commands.registerCommand(
     'frontendInterview.removeBank',
-    () => removeBank(registry, state, listProvider, reviewProvider),
+    () => removeBank(registry, storage, state, listProvider, reviewProvider),
   );
 
   const reviewUnmasteredCmd = vscode.commands.registerCommand(

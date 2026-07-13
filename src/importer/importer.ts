@@ -2,7 +2,7 @@
  * Importer（Task 16.1）
  *
  * 负责弹出文件选择对话框、读取 JSON 文件、调用 Parser、
- * 并通过 BankRegistry 执行安全切换导入。
+ * 并通过 BankRegistry 执行安全新增与切换。
  *
  * Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 11.4
  */
@@ -30,8 +30,8 @@ const FILE_SIZE_LIMIT = 10 * 1024 * 1024;
  *   3. UTF-8 读取文件内容
  *   4. 调用 `parse(text)`
  *   5. 解析失败 -> `showErrorMessage` + 不修改 Storage
- *   6. 解析成功且已存在同名同版本题库 -> QuickPick "覆盖已有题库" / "取消导入"
- *   7. 用户确认覆盖 或 无重复 -> `registry.install(bank, { fileName })`
+ *   6. 解析成功且已存在同名同版本题库 -> 提示先删除旧题库，不重复导入
+ *   7. 无重复 -> `registry.install(bank, { fileName })` 作为新题库加入
  *   8. 成功 -> `showInformationMessage` 含题数，触发 `listProvider.refresh()`
  */
 export async function importBank(
@@ -111,15 +111,12 @@ export async function importBank(
 
   const bank = result.value;
 
-  // Step 6: 检查是否存在同名同版本题库
+  // Step 6: 同名同版本视为重复；本产品不提供更新/覆盖，只允许新增。
   if (registry.isLegacyDuplicate(bank)) {
-    const choice = await vscode.window.showQuickPick(
-      ['覆盖已有题库', '取消导入'],
-      { placeHolder: `题库 "${bank.name}" (${bank.version}) 已存在` },
+    await vscode.window.showErrorMessage(
+      `题库 "${bank.name}" (${bank.version}) 已存在，请先删除旧题库后再导入。`,
     );
-    if (choice !== '覆盖已有题库') {
-      return;
-    }
+    return;
   }
 
   // Step 7: 执行安装

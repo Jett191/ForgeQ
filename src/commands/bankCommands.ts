@@ -66,6 +66,7 @@ export async function switchBank(
  */
 export async function removeBank(
   registry: BankRegistry,
+  storage: Storage,
   state: InMemoryState,
   listProvider: QuestionListSyncTarget,
   reviewProvider: ReviewSyncTarget,
@@ -98,9 +99,22 @@ export async function removeBank(
 
   await registry.remove(selected.bankId);
 
-  // Clear state.currentBank if the removed bank was active
+  // 删除当前题库时，Storage 会自动选中剩余列表里最近导入的题库。
   if (state.currentBank?.bankId === selected.bankId) {
-    delete state.currentBank;
+    const fallback = registry.current();
+    if (fallback) {
+      try {
+        const bank = await storage.banks.readBank(fallback.id);
+        const learning = await storage.userData.readLearningMap(fallback.id);
+        state.currentBank = { bankId: fallback.id, bank, learning };
+      } catch (err) {
+        delete state.currentBank;
+        const cause = err instanceof Error ? err.message : String(err);
+        await vscode.window.showErrorMessage(`删除成功，但加载剩余题库失败: ${cause}`);
+      }
+    } else {
+      delete state.currentBank;
+    }
   }
 
   syncProviders(state, registry.current(), listProvider, reviewProvider);

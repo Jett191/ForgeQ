@@ -1,7 +1,7 @@
-// Feature: frontend-interview-practice, Property 17: 覆盖导入安全切换语义
+// Feature: frontend-interview-practice, Property 17: 新增导入安全切换语义
 //
-// 验证 installBank 的成功路径（currentBankId 更新、旧 bank 不可见）以及
-// 失败注入 Phase 1/2/3（旧 bank 完整保持不变）。
+// 验证 installBank 的成功路径（currentBankId 更新、已有 bank 保留）以及
+// 失败注入 Phase 1/2/3（已有 bank 完整保持不变）。
 //
 // numRuns: 100
 
@@ -32,7 +32,7 @@ import type { QuestionBank } from '../../src/types/question.js';
 
 const NUM_RUNS = 100;
 
-describe('Property 17: 覆盖导入安全切换语义', () => {
+describe('Property 17: 新增导入安全切换语义', () => {
   it('installBank success: currentBankId updates, new bank in list', async () => {
     await fc.assert(
       fc.asyncProperty(arbQuestionBank, async (bank: QuestionBank) => {
@@ -58,7 +58,7 @@ describe('Property 17: 覆盖导入安全切换语义', () => {
     );
   });
 
-  it('installBank success with existing bank: old bank removed from list', async () => {
+  it('installBank success with existing bank: old bank remains available', async () => {
     await fc.assert(
       fc.asyncProperty(
         arbQuestionBank,
@@ -74,16 +74,18 @@ describe('Property 17: 覆盖导入安全切换语义', () => {
           const summaryA = await storage.installBank(bankA);
           expect(storage.getCurrentMeta().currentBankId).toBe(summaryA.id);
 
-          // Install second bank (overwrite)
+          // Install second bank as another independent bank.
           const summaryB = await storage.installBank(bankB);
 
           const meta = storage.getCurrentMeta();
           // currentBankId should be the new bank
           expect(meta.currentBankId).toBe(summaryB.id);
-          // Old bank should not be in list
-          expect(meta.banks.some((b) => b.id === summaryA.id)).toBe(false);
+          // Old bank and its files remain available.
+          expect(meta.banks.some((b) => b.id === summaryA.id)).toBe(true);
+          expect(await storage.banks.bankExists(summaryA.id)).toBe(true);
           // New bank should be in list
           expect(meta.banks.some((b) => b.id === summaryB.id)).toBe(true);
+          expect(meta.banks).toHaveLength(2);
         },
       ),
       { numRuns: NUM_RUNS },

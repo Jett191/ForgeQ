@@ -97,7 +97,7 @@ export class BankRegistry {
   }
 
   /**
-   * 判断是否已存在同名同版本的题库（用于覆盖导入前的提示）。
+   * 判断是否已存在同名同版本的题库（用于阻止重复新增）。
    */
   isLegacyDuplicate(bank: QuestionBank): boolean {
     const banks = this.storage.getCurrentMeta().banks;
