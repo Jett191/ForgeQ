@@ -20,6 +20,7 @@
 import * as vscode from 'vscode';
 
 import type { FilterState } from '../filter/filter.js';
+import { normalizeCategory } from '../filter/filter.js';
 import type { Difficulty, QuestionType } from '../types/question.js';
 import type { QuestionListProvider } from '../views/questionListProvider.js';
 
@@ -77,7 +78,9 @@ export async function filterByType(provider: QuestionListProvider): Promise<void
 export async function filterByCategory(provider: QuestionListProvider): Promise<void> {
   const categories = provider.getCategoriesInBank();
   if (categories.length === 0) {
-    await vscode.window.showInformationMessage('当前题库为空或未加载，无法按分类筛选。');
+    await vscode.window.showInformationMessage(
+      '当前题库为空、未加载，或其它筛选条件下没有可用分类。',
+    );
     return;
   }
   const current = provider.getFilter().category;
@@ -91,7 +94,9 @@ export async function filterByCategory(provider: QuestionListProvider): Promise<
   const items = options.map((opt) => {
     const item: FilterPickItem<string | 'all'> = { label: opt.label, value: opt.value };
     const isCurrent =
-      opt.value === 'all' ? current === undefined : opt.value === current;
+      opt.value === 'all'
+        ? current === undefined
+        : current !== undefined && normalizeCategory(opt.value) === normalizeCategory(current);
     if (isCurrent) item.description = '当前';
     return item;
   });

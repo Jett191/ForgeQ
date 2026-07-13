@@ -20,11 +20,12 @@
 import * as vscode from 'vscode';
 
 import type { FilterState } from '../filter/filter.js';
-import { applyFilter, isActive } from '../filter/filter.js';
+import { applyFilter, clearDimension, isActive, normalizeCategory } from '../filter/filter.js';
 import type { LearningState } from '../types/learning.js';
 import type { Difficulty, Question, QuestionBank, QuestionType } from '../types/question.js';
 import type { BankSummary } from '../types/bankMeta.js';
 import { learningStateVisualStatus, statusToIcon } from './iconRegistry.js';
+import { sidebarQuestionTitle } from './questionDisplay.js';
 
 // ---------------------------------------------------------------------------
 // TreeItem 类型
@@ -111,9 +112,17 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
     summary: BankSummary | undefined,
     learning: ReadonlyMap<string, LearningState>,
   ): void {
+    const bankChanged = this._bankSummary?.id !== summary?.id;
     this._bank = bank;
     this._bankSummary = summary;
     this._learningMap = learning;
+    if (bankChanged) {
+      this._filter = {};
+      if (this._refreshTimer !== undefined) {
+        clearTimeout(this._refreshTimer);
+        this._refreshTimer = undefined;
+      }
+    }
     this.refresh();
   }
 
@@ -139,14 +148,22 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
     return this._groupByCategory;
   }
 
-  /** 返回当前题库内所有分类（按首次出现顺序），供 QuickPick 用。 */
+  /**
+   * 返回当前其它筛选条件下可用的分类（按首次出现顺序），供 QuickPick 用。
+   * 分类自身的筛选不会参与计算，确保用户始终可以改选其它分类。
+   */
   getCategoriesInBank(): string[] {
+    const questions = applyFilter(
+      this._bank?.questions ?? [],
+      clearDimension(this._filter, 'category'),
+    );
     const set = new Set<string>();
     const list: string[] = [];
-    for (const q of this._bank?.questions ?? []) {
-      if (!set.has(q.category)) {
-        set.add(q.category);
-        list.push(q.category);
+    for (const q of questions) {
+      const key = normalizeCategory(q.category);
+      if (!set.has(key)) {
+        set.add(key);
+        list.push(q.category.trim());
       }
     }
     return list;
@@ -209,7 +226,7 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
       case 'question': {
         const q = element.question;
         const item = new vscode.TreeItem(
-          q.title,
+          sidebarQuestionTitle(q),
           vscode.TreeItemCollapsibleState.None,
         );
 
@@ -295,15 +312,19 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
 
       // 分类分组：当前筛选已锁定单一 category 时自动跳过分类层
       const lockedCategory = isActive(this._filter, 'category');
-      const grouped: Map<string, Question[]> = new Map();
+      const grouped = new Map<string, { category: string; questions: Question[] }>();
       for (const q of filtered) {
-        const list = grouped.get(q.category);
-        if (list) list.push(q);
-        else grouped.set(q.category, [q]);
+        const key = normalizeCategory(q.category);
+        const group = grouped.get(key);
+        if (group) {
+          group.questions.push(q);
+        } else {
+          grouped.set(key, { category: q.category.trim(), questions: [q] });
+        }
       }
 
       if (this._groupByCategory && !lockedCategory && grouped.size > 1) {
-        return [...grouped.entries()].map(([category, questions]) => ({
+        return [...grouped.values()].map(({ category, questions }) => ({
           kind: 'category' as const,
           category,
           questions,

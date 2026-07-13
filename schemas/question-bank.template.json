@@ -1,0 +1,60 @@
+{
+  "name": "我的前端题库",
+  "version": "1.0.0",
+  "questions": [
+    {
+      "id": "javascript-event-loop-001",
+      "type": "qa",
+      "title": "请详细说明 JavaScript 事件循环中同步任务、宏任务和微任务的执行顺序",
+      "shortTitle": "JavaScript 事件循环",
+      "content": "请结合 `setTimeout`、`Promise` 和同步代码说明事件循环的执行过程。",
+      "category": "JavaScript",
+      "tags": [
+        "事件循环",
+        "异步",
+        "Promise"
+      ],
+      "difficulty": "medium",
+      "answer": "同步代码执行完毕后，会先清空微任务队列，然后再执行下一个宏任务。",
+      "keywords": [
+        "调用栈",
+        "宏任务",
+        "微任务"
+      ],
+      "briefAnswer": "同步任务执行完毕后清空微任务，再进入下一个宏任务。",
+      "detailedAnswer": "JavaScript 首先执行当前调用栈中的同步代码。调用栈清空后，运行时会依次执行微任务队列中的任务；微任务队列清空后，才会进入下一个宏任务。",
+      "followUps": [
+        {
+          "question": "Promise.then 和 setTimeout 谁先执行？",
+          "answer": "通常 Promise.then 进入微任务队列，setTimeout 回调进入宏任务队列，因此 Promise.then 先执行。"
+        }
+      ]
+    },
+    {
+      "id": "javascript-array-unique-001",
+      "type": "code",
+      "title": "请实现一个函数，在保持原始顺序的前提下删除数组中的重复元素",
+      "shortTitle": "数组去重",
+      "content": "实现 `unique(values)`，返回去重后的新数组，不要修改原数组。",
+      "category": "JavaScript",
+      "tags": [
+        "数组",
+        "Set"
+      ],
+      "difficulty": "easy",
+      "answer": "function unique(values) {\n  return [...new Set(values)];\n}",
+      "language": "javascript",
+      "initialCode": "function unique(values) {\n  // 在这里编写代码\n}",
+      "referenceCode": "function unique(values) {\n  return [...new Set(values)];\n}",
+      "testCases": [
+        {
+          "name": "基本用例",
+          "input": "[1, 1, 2, 3, 3]",
+          "expected": "[1, 2, 3]",
+          "description": "重复元素只保留第一次出现的位置。"
+        }
+      ],
+      "solutionExplanation": "Set 会按照元素首次插入的顺序保存唯一值，再使用展开运算符转换为数组。"
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import type { LearningState } from '../types/learning.js';
 import type { Question, QuestionBank } from '../types/question.js';
 import { buildReviewSet, type ReviewKind } from '../domain/reviewSetBuilder.js';
 import { learningStateVisualStatus, statusToIcon } from './iconRegistry.js';
+import { sidebarQuestionTitle } from './questionDisplay.js';
 
 // ---------------------------------------------------------------------------
 // TreeItem 类型
@@ -108,7 +109,7 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
       case 'question': {
         const q = element.question;
         const item = new vscode.TreeItem(
-          q.title,
+          sidebarQuestionTitle(q),
           vscode.TreeItemCollapsibleState.None,
         );
         const parts: string[] = [];
@@ -116,6 +117,7 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
         parts.push(q.difficulty);
         parts.push(q.category);
         item.description = parts.join(' | ');
+        item.tooltip = q.title;
 
         const ls = element.learning;
         const visualStatus = learningStateVisualStatus(ls);

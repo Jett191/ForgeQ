@@ -80,8 +80,8 @@ export function format(bank: QuestionBank): string {
  * 字段顺序约定（与 `schema.ts > QuestionBase.required` + 子类型 extras 中
  * 字段声明顺序对齐，便于 diff 与人工核对）：
  *
- * 1. `QuestionBase` 必填字段：`id` → `type` → `title` → `content` →
- *    `category` → `tags` → `difficulty` → `answer`。
+ * 1. `QuestionBase` 字段：`id` → `type` → `title` → 可选 `shortTitle` →
+ *    `content` → `category` → `tags` → `difficulty` → `answer`。
  * 2. 当 `type === 'code'` 时追加：`language` → `initialCode` → `codeTemplate`
  *    → `referenceCode` → `testCases` → `solutionExplanation`。
  * 3. 当 `type === 'qa'` 时追加：`keywords` → `briefAnswer` → `detailedAnswer`
@@ -96,6 +96,7 @@ function formatQuestion(q: Question): Record<string, unknown> {
   out.id = q.id;
   out.type = q.type;
   out.title = q.title;
+  if (q.shortTitle !== undefined) out.shortTitle = q.shortTitle;
   out.content = q.content;
   out.category = q.category;
   // tags 数组在序列化时浅拷贝，避免外部修改原数组影响 JSON.stringify 的快照

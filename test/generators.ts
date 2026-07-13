@@ -189,6 +189,7 @@ const arbCodeQuestionWithId = (id: string): fc.Arbitrary<CodeQuestion> =>
       id: fc.constant(id),
       type: fc.constant('code' as const),
       title: arbConstrainedString(200),
+      shortTitle: fc.option(arbConstrainedString(60), { nil: null }),
       content: fc.string({ maxLength: 200, unit: 'grapheme-ascii' }),
       category: arbConstrainedString(100),
       tags: fc.array(arbTag, { minLength: 0, maxLength: 5 }),
@@ -206,8 +207,9 @@ const arbCodeQuestionWithId = (id: string): fc.Arbitrary<CodeQuestion> =>
         nil: null,
       }),
     })
-    .map(({ language, initialCode, codeTemplate, referenceCode, ...base }) => {
+    .map(({ shortTitle, language, initialCode, codeTemplate, referenceCode, ...base }) => {
       const out: CodeQuestion = base;
+      if (shortTitle !== null) out.shortTitle = shortTitle;
       if (language !== null) out.language = language;
       if (initialCode !== null) out.initialCode = initialCode;
       if (codeTemplate !== null) out.codeTemplate = codeTemplate;
@@ -228,6 +230,7 @@ const arbQAQuestionWithId = (id: string): fc.Arbitrary<QAQuestion> =>
       id: fc.constant(id),
       type: fc.constant('qa' as const),
       title: arbConstrainedString(200),
+      shortTitle: fc.option(arbConstrainedString(60), { nil: null }),
       content: fc.string({ maxLength: 200, unit: 'grapheme-ascii' }),
       category: arbConstrainedString(100),
       tags: fc.array(arbTag, { minLength: 0, maxLength: 5 }),
@@ -256,8 +259,9 @@ const arbQAQuestionWithId = (id: string): fc.Arbitrary<QAQuestion> =>
         { nil: null },
       ),
     })
-    .map(({ briefAnswer, detailedAnswer, followUps, ...base }) => {
+    .map(({ shortTitle, briefAnswer, detailedAnswer, followUps, ...base }) => {
       const out: QAQuestion = base;
+      if (shortTitle !== null) out.shortTitle = shortTitle;
       if (briefAnswer !== null) out.briefAnswer = briefAnswer;
       if (detailedAnswer !== null) out.detailedAnswer = detailedAnswer;
       if (followUps !== null) out.followUps = followUps;
@@ -519,4 +523,3 @@ export const arbFilterStateForBank = (
       return out;
     });
 };
-

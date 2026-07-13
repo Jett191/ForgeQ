@@ -37,6 +37,7 @@ export type MasteryStatus = 'unlearned' | 'learning' | 'mastered' | 'not_mastere
  * 字段长度 / 元素个数约束见 Req 1.1：
  * - `id`：1-100 字符，区分大小写唯一。
  * - `title`：1-200 字符。
+ * - `shortTitle`：可选，1-60 字符，仅用于侧栏紧凑展示。
  * - `content`：≤20000 字符，markdown。
  * - `category`：1-100 字符。
  * - `tags`：0-50 个元素。
@@ -49,6 +50,8 @@ export interface QuestionBase {
   type: QuestionType;
   /** 题目标题，1-200 字符。 */
   title: string;
+  /** 侧栏短标题，1-60 字符；缺省时回退到 title。 */
+  shortTitle?: string;
   /** 题面 markdown 内容，≤20000 字符。 */
   content: string;
   /** 题目分类，1-100 字符。 */

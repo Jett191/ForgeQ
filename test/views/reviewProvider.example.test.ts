@@ -65,6 +65,7 @@ const bank: QuestionBank = {
       id: 'q1',
       type: 'code',
       title: 'Q1',
+      shortTitle: '短标题 Q1',
       content: '',
       category: 'JS',
       tags: [],
@@ -238,5 +239,13 @@ describe('ReviewProvider example', () => {
       .filter((c) => c.kind === 'question')
       .map((c) => (c as { kind: 'question'; question: { id: string } }).question.id);
     expect(ids).toEqual(['q1', 'q2']);
+
+    const first = children[0]!;
+    expect(first.kind).toBe('question');
+    if (first.kind === 'question') {
+      const item = provider.getTreeItem(first);
+      expect(item.label).toBe('短标题 Q1');
+      expect(item.tooltip).toBe('Q1');
+    }
   });
 });

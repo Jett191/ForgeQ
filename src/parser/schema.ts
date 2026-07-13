@@ -68,6 +68,7 @@ export const questionBankSchema = {
         id: { type: 'string', minLength: 1, maxLength: 100 },
         type: { type: 'string', enum: ['code', 'qa'] },
         title: { type: 'string', minLength: 1, maxLength: 200 },
+        shortTitle: { type: 'string', minLength: 1, maxLength: 60 },
         content: { type: 'string', maxLength: 20000 },
         category: { type: 'string', minLength: 1, maxLength: 100 },
         tags: {
