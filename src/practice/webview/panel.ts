@@ -17,7 +17,11 @@ import { deriveLearningState, toggleWrongFlag } from '../../domain/masteryRules.
 import { getOrDefault } from '../../storage/userDataStore.js';
 import type { InMemoryState, Storage } from '../../storage/storage.js';
 import { deriveQuestionAnswer } from '../practiceFiles.js';
-import { buildQuestionMarkdown, questionMarkdownFileName } from '../shareMarkdown.js';
+import {
+  buildQuestionMarkdown,
+  questionMarkdownFileName,
+  type SharedAnswerFile,
+} from '../shareMarkdown.js';
 import type {
   AnswerPayload,
   HostToWebviewMessage,
@@ -382,7 +386,8 @@ export class PracticePanel {
         }
 
         try {
-          const markdown = buildQuestionMarkdown(question);
+          const answerFiles = await this.readAnswerFiles(bankId, qid);
+          const markdown = buildQuestionMarkdown(question, answerFiles);
           await vscode.workspace.fs.writeFile(target, Buffer.from(markdown, 'utf8'));
           this.postMessage(bankId, qid, {
             type: 'shareAck',
@@ -426,5 +431,28 @@ export class PracticePanel {
         break;
       }
     }
+  }
+
+  /** Read every text file in the question project, preferring unsaved editor content. */
+  private async readAnswerFiles(bankId: string, qid: string): Promise<SharedAnswerFile[]> {
+    const files = await this.deps.storage.userData.listQuestionProjectFiles(bankId, qid);
+    const answers: SharedAnswerFile[] = [];
+
+    for (const file of files) {
+      const openDocument = vscode.workspace.textDocuments.find(
+        (document) => document.uri.toString() === file.uri.toString(),
+      );
+      if (openDocument) {
+        answers.push({ relativePath: file.relativePath, content: openDocument.getText() });
+        continue;
+      }
+
+      const bytes = await vscode.workspace.fs.readFile(file.uri);
+      // Ignore obvious binary assets in a project; they cannot be represented usefully as Markdown text.
+      if (bytes.includes(0)) continue;
+      answers.push({ relativePath: file.relativePath, content: Buffer.from(bytes).toString('utf8') });
+    }
+
+    return answers;
   }
 }

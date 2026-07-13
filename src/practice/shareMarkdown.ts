@@ -1,6 +1,11 @@
 import type { Question } from '../types/question.js';
 import { deriveQuestionAnswer } from './practiceFiles.js';
 
+export interface SharedAnswerFile {
+  relativePath: string;
+  content: string;
+}
+
 const difficultyLabels: Record<Question['difficulty'], string> = {
   easy: '简单',
   medium: '中等',
@@ -12,8 +17,50 @@ function section(title: string, content: string | undefined): string[] {
   return [`## ${title}`, '', content.trim(), ''];
 }
 
-/** Build a portable Markdown document containing one question and its answer. */
-export function buildQuestionMarkdown(question: Question): string {
+function codeFence(content: string): string {
+  const longestRun = Math.max(0, ...Array.from(content.matchAll(/`+/g), (match) => match[0].length));
+  return '`'.repeat(Math.max(3, longestRun + 1));
+}
+
+function languageForFile(relativePath: string): string {
+  const extension = relativePath.split('.').pop()?.toLowerCase();
+  const aliases: Record<string, string> = {
+    js: 'javascript',
+    jsx: 'jsx',
+    ts: 'typescript',
+    tsx: 'tsx',
+    html: 'html',
+    css: 'css',
+    json: 'json',
+    vue: 'vue',
+    py: 'python',
+    java: 'java',
+    md: 'markdown',
+  };
+  return extension ? aliases[extension] ?? extension : '';
+}
+
+function userAnswerLines(files: ReadonlyArray<SharedAnswerFile>): string[] {
+  const lines = ['## 我的回答', ''];
+  if (files.length === 0) return [...lines, '（暂无回答内容）', ''];
+
+  for (const file of files) {
+    lines.push(`### ${file.relativePath}`, '');
+    if (!file.content.trim()) {
+      lines.push('（空文件）', '');
+      continue;
+    }
+    const fence = codeFence(file.content);
+    lines.push(`${fence}${languageForFile(file.relativePath)}`, file.content.trimEnd(), fence, '');
+  }
+  return lines;
+}
+
+/** Build a portable Markdown document containing the prompt, user's work and reference answer. */
+export function buildQuestionMarkdown(
+  question: Question,
+  answerFiles: ReadonlyArray<SharedAnswerFile> = [],
+): string {
   const lines = [
     `# ${question.title}`,
     '',
@@ -26,7 +73,9 @@ export function buildQuestionMarkdown(question: Question): string {
     lines.push(`- 标签：${question.tags.join('、')}`);
   }
 
-  lines.push('', '## 题目', '', question.content.trim(), '');
+  lines.push('', '## 题目', '', `**${question.title}**`, '');
+  if (question.content.trim()) lines.push(question.content.trim(), '');
+  lines.push(...userAnswerLines(answerFiles));
 
   const answer = deriveQuestionAnswer(question);
   if (answer.kind === 'none') {

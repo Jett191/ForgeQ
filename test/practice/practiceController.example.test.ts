@@ -34,6 +34,7 @@ vi.mock('vscode', () => {
         items.find((item) => item.fileName === 'index.js') ??
         items.find((item) => item.action === 'file'),
       showInputBox: async () => undefined,
+      showSaveDialog: async () => HarnessUri.file('/exports/shared-question.md'),
       createTerminal: vi.fn(() => ({ show: vi.fn(), dispose: vi.fn() })),
       showTextDocument: async (doc: unknown, column?: unknown) => {
         layoutCallOrder.push('answer');
@@ -62,6 +63,7 @@ vi.mock('vscode', () => {
     },
     workspace: {
       ...base.workspace,
+      textDocuments: [],
       openTextDocument: async (uri: unknown) => {
         openTextDocumentCalls.push(uri);
         return { uri };
@@ -189,6 +191,42 @@ describe('PracticeController open(qid)', () => {
     expect(createWebviewPanelCalls.length).toBe(1);
     expect(createWebviewPanelCalls[0]).toHaveProperty('title', 'What is closure?');
 
+    controller.dispose();
+  });
+
+  it('分享 Markdown 同时导出题目、我的回答和参考答案', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    const bankId = state.currentBank!.bankId;
+    const answerUri = await storage.userData.ensureQuestionProjectFile(
+      bankId,
+      'q-qa-1',
+      'answer.md',
+    );
+    await harness.workspaceFs.writeFile(
+      answerUri as HarnessUri,
+      Buffer.from('这是我自己的回答。', 'utf8'),
+    );
+    const controller = new PracticeController(ctx as any, storage, state);
+
+    await controller.open('q-qa-1');
+    await webviewMessageHandlers[0]!({ type: 'shareMarkdown' });
+
+    const exported = Buffer.from(
+      await harness.workspaceFs.readFile(HarnessUri.file('/exports/shared-question.md')),
+    ).toString('utf8');
+    expect(exported).toContain('## 题目\n\n**What is closure?**');
+    expect(exported).toContain('## 我的回答');
+    expect(exported).toContain('这是我自己的回答。');
+    expect(exported).toContain('## 参考答案');
+    expect(exported).toContain('A closure is a function with access to its outer scope.');
+    expect(mockPostMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'shareAck', ok: true }),
+    );
     controller.dispose();
   });
 
