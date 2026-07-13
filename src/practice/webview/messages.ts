@@ -29,6 +29,7 @@ export type HostToWebviewMessage =
   | { type: 'rollback'; payload: Partial<LearningState> }
   | { type: 'refreshLearning'; payload: LearningState }
   | { type: 'masteryAck'; ok: boolean; reason?: string }
+  | { type: 'wrongAck'; ok: boolean; reason?: string }
   | { type: 'favoriteAck'; ok: boolean; reason?: string };
 
 /**
@@ -45,6 +46,7 @@ export type WebviewToHostMessage =
   | { type: 'ready' }
   | { type: 'requestAnswer' }
   | { type: 'toggleFavorite' }
+  | { type: 'toggleWrong' }
   | { type: 'setMastery'; value: MasteryStatus }
   | { type: 'openNativeEditor'; target: 'code' | 'qa' | 'note' }
   | { type: 'requestNotePreview' };

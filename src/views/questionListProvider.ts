@@ -24,7 +24,7 @@ import { applyFilter, isActive } from '../filter/filter.js';
 import type { LearningState } from '../types/learning.js';
 import type { Difficulty, Question, QuestionBank, QuestionType } from '../types/question.js';
 import type { BankSummary } from '../types/bankMeta.js';
-import { statusToIcon } from './iconRegistry.js';
+import { learningStateVisualStatus, statusToIcon } from './iconRegistry.js';
 
 // ---------------------------------------------------------------------------
 // TreeItem 类型
@@ -91,9 +91,15 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
   private _groupByCategory = true;
   private _refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private _debounceMs: number;
+  private readonly _extensionUri: vscode.Uri | undefined;
 
-  constructor(options?: { debounceMs?: number; groupByCategory?: boolean }) {
+  constructor(options?: {
+    debounceMs?: number;
+    groupByCategory?: boolean;
+    extensionUri?: vscode.Uri;
+  }) {
     this._debounceMs = options?.debounceMs ?? 500;
+    this._extensionUri = options?.extensionUri;
     if (options?.groupByCategory !== undefined) {
       this._groupByCategory = options.groupByCategory;
     }
@@ -209,8 +215,8 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
 
         // mastery 图标
         const ls = element.learning;
-        const mastery = ls?.mastery ?? 'unlearned';
-        item.iconPath = statusToIcon(mastery);
+        const visualStatus = learningStateVisualStatus(ls);
+        item.iconPath = statusToIcon(visualStatus, this._extensionUri);
 
         // description: 类型 · 难度 [· 分类（仅扁平模式且筛选未限定分类时显示）] [收藏 / 笔记标记]
         const descParts: string[] = [];

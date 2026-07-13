@@ -31,8 +31,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
 
   // 2. 实例化核心组件
   const registry = new BankRegistry(storage, ctx.globalState);
-  const listProvider = new QuestionListProvider();
-  const reviewProvider = new ReviewProvider();
+  const listProvider = new QuestionListProvider({ extensionUri: ctx.extensionUri });
+  const reviewProvider = new ReviewProvider(ctx.extensionUri);
   const practiceController = new PracticeController(ctx, storage, state, {
     onLearningChanged: (bankId) => {
       if (state.currentBank?.bankId !== bankId) return;

@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 
 import type { LearningState } from '../../types/learning.js';
 import type { MasteryStatus, Question } from '../../types/question.js';
-import { deriveLearningState } from '../../domain/masteryRules.js';
+import { deriveLearningState, toggleWrongFlag } from '../../domain/masteryRules.js';
 import { getOrDefault } from '../../storage/userDataStore.js';
 import type { InMemoryState, Storage } from '../../storage/storage.js';
 import {
@@ -152,9 +152,9 @@ export class PracticePanel {
       <div id="mastery-fab" class="mastery-fab">
         <div class="mastery-options" hidden>
           <button class="seg" type="button" data-mastery="unlearned" aria-label="未学习" title="未学习">○</button>
-          <button class="seg" type="button" data-mastery="learning" aria-label="学习中" title="学习中">◔</button>
+          <button class="seg" type="button" data-mastery="not_mastered" aria-label="未掌握" title="未掌握">◔</button>
           <button class="seg" type="button" data-mastery="mastered" aria-label="已掌握" title="已掌握">✓</button>
-          <button class="seg" type="button" data-mastery="not_mastered" aria-label="未掌握" title="未掌握">✗</button>
+          <button class="seg" type="button" data-wrong aria-label="错题" title="错题">✗</button>
         </div>
         <button id="btn-mastery" class="mastery-trigger" type="button" aria-label="学习状态" title="学习状态" aria-haspopup="true" aria-expanded="false">
           <span class="mastery-icon" aria-hidden="true">○</span>
@@ -244,6 +244,8 @@ export class PracticePanel {
       const reason = '题库已被移除或替换';
       if (msg.type === 'toggleFavorite') {
         this.postMessage(bankId, qid, { type: 'favoriteAck', ok: false, reason });
+      } else if (msg.type === 'toggleWrong') {
+        this.postMessage(bankId, qid, { type: 'wrongAck', ok: false, reason });
       } else if (msg.type === 'setMastery') {
         this.postMessage(bankId, qid, { type: 'masteryAck', ok: false, reason });
       }
@@ -324,6 +326,31 @@ export class PracticePanel {
         } else {
           const reason = 'cause' in result.error ? result.error.cause : 'unknown';
           this.postMessage(bankId, qid, { type: 'masteryAck', ok: false, reason });
+          this.postMessage(bankId, qid, { type: 'rollback', payload: prev });
+        }
+        break;
+      }
+
+      case 'toggleWrong': {
+        const prev = getOrDefault(learningMap.get(qid));
+        const next = toggleWrongFlag(prev);
+
+        const result = await storage.writeWithRollback({
+          prev,
+          next,
+          applyMemory: (v) => { learningMap.set(qid, v); },
+          persist: () => storage.userData.writeLearningState(bankId, qid, next),
+          onRollback: (v) => { learningMap.set(qid, v); },
+          path: 'learning.json',
+        });
+
+        if (result.ok) {
+          this.postMessage(bankId, qid, { type: 'wrongAck', ok: true });
+          this.postMessage(bankId, qid, { type: 'refreshLearning', payload: next });
+          this.deps.onLearningChanged?.(bankId, qid);
+        } else {
+          const reason = 'cause' in result.error ? result.error.cause : 'unknown';
+          this.postMessage(bankId, qid, { type: 'wrongAck', ok: false, reason });
           this.postMessage(bankId, qid, { type: 'rollback', payload: prev });
         }
         break;

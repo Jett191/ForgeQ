@@ -29,6 +29,8 @@
 // **Validates: Requirements 5.2, 5.6, 5.8, 5.9, 6.5, 6.6**
 
 import { vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // `iconRegistry.ts`（被本文件末尾的 Property 15 用例引用）在运行时
 // `import * as vscode from 'vscode'`，因此必须把 `vscode` 模块替换为只包含本
@@ -281,30 +283,71 @@ describe('Property 14: 渲染派生函数', () => {
 // Feature: frontend-interview-practice, Property 15: Mastery 视觉标识单射
 //
 // 验证 design.md "Correctness Properties > Property 15" 与 Req 9.5 描述的单射性：
-//   ∀ s₁, s₂ ∈ MasteryStatus，若 s₁ ≠ s₂ 则 iconKey(statusToIcon(s₁)) ≠ iconKey(statusToIcon(s₂))。
+//   ∀ s₁, s₂ ∈ MasteryStatus，若 s₁ ≠ s₂ 则 statusIconFile(s₁) ≠ statusIconFile(s₂)。
 //
 // `MasteryStatus` 仅有四个取值，但本 PBT 仍以 numRuns: 100 覆盖所有 (s₁, s₂)
-// 组合（fast-check 会反复采样），等价地保证四个状态对应的 ThemeIcon 两两不同。
-// 配合 `iconKey(icon)` 这个测试辅助函数（把 ThemeIcon 投影成 `<id>|<color>`），
-// 比较时不依赖 ThemeIcon 实例的引用相等性。
+// 组合（fast-check 会反复采样），等价地保证四个状态对应的 SVG 两两不同。
 //
 // **Validates: Requirements 9.5**
 // ---------------------------------------------------------------------------
 
-import { iconKey, statusToIcon } from '../../src/views/iconRegistry.js';
+import {
+  learningStateVisualStatus,
+  statusIconFile,
+} from '../../src/views/iconRegistry.js';
 
 describe('Property 15: Mastery 视觉标识单射', () => {
-  it('四个 MasteryStatus 取值映射到的 ThemeIcon 互不相同', () => {
+  it('四种状态使用各自的自定义圆点 SVG', () => {
+    expect(statusIconFile('unlearned')).toBe('unlearned.svg');
+    expect(statusIconFile('learning')).toBe('learning.svg');
+    expect(statusIconFile('mastered')).toBe('mastered.svg');
+    expect(statusIconFile('not_mastered')).toBe('not-mastered.svg');
+    expect(statusIconFile('wrong')).toBe('wrong.svg');
+  });
+
+  it('未掌握显示橙色状态，只有独立错题标记显示红色状态', () => {
+    const base = {
+      mastery: 'not_mastered' as const,
+      favoriteFlag: false,
+      hasNote: false,
+    };
+    expect(learningStateVisualStatus({ ...base, wrongFlag: false })).toBe(
+      'not_mastered',
+    );
+    expect(learningStateVisualStatus({ ...base, wrongFlag: true })).toBe('wrong');
+  });
+
+  it('浅色和深色资源都只由圆形构成，不包含勾或叉路径', () => {
+    const statuses = [
+      'unlearned',
+      'learning',
+      'mastered',
+      'not_mastered',
+      'wrong',
+    ] as const;
+    for (const theme of ['light', 'dark'] as const) {
+      for (const status of statuses) {
+        const svg = readFileSync(
+          join(process.cwd(), 'media', 'mastery', theme, statusIconFile(status)),
+          'utf8',
+        );
+        expect(svg).toContain('<circle');
+        expect(svg).not.toContain('<path');
+      }
+    }
+  });
+
+  it('四个 MasteryStatus 取值映射到的 SVG 互不相同', () => {
     fc.assert(
       fc.property(arbMasteryStatus, arbMasteryStatus, (s1, s2) => {
-        // 同一取值必然映射到等价的 key（自反性，作为反向健全性检查）。
+        // 同一取值必然映射到同一资源（自反性，作为反向健全性检查）。
         if (s1 === s2) {
-          expect(iconKey(statusToIcon(s1))).toBe(iconKey(statusToIcon(s2)));
+          expect(statusIconFile(s1)).toBe(statusIconFile(s2));
           return;
         }
-        // 不同取值必须映射到不同的 ThemeIcon —— 这是 Req 9.5 / Property 15
+        // 不同取值必须映射到不同的 SVG —— 这是 Req 9.5 / Property 15
         // 要求的"视觉标识单射"。
-        expect(iconKey(statusToIcon(s1))).not.toBe(iconKey(statusToIcon(s2)));
+        expect(statusIconFile(s1)).not.toBe(statusIconFile(s2));
       }),
       { numRuns: NUM_RUNS },
     );

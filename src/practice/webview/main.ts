@@ -152,7 +152,7 @@ function masteryIcon(m: string): string {
     case 'mastered':
       return '✓';
     case 'not_mastered':
-      return '✗';
+      return '◔';
     case 'learning':
       return '◔';
     case 'unlearned':
@@ -243,8 +243,8 @@ function renderQuestion(question: Question): void {
  *
  * 标题栏右侧的收藏星按钮 + 答案 toggle 行右侧的学习状态浮动按钮组：
  *  - 收藏：active class + aria 文案；
- *  - 学习状态主按钮：is-${mastery} class（决定边框/前景色）+ 中心字符更新；
- *  - 4 个选项按钮：当前选中态加 .active 高亮（颜色由 mastery 类型决定）。
+ *  - 学习状态主按钮：显示掌握状态；错题标记开启时优先显示错题；
+ *  - 掌握状态与错题按钮分别维护自己的 active 高亮。
  *
  * 入参类型仍保留完整 LearningState，扩展端协议不变。
  */
@@ -259,7 +259,7 @@ function updateLearningUI(learning: LearningState): void {
     favBtn.setAttribute('title', learning.favoriteFlag ? '取消收藏' : '收藏');
   }
 
-  // 4 个选项按钮的 active class
+  // 掌握状态按钮的 active class（learning 仅为旧数据兼容，不再提供按钮）
   const masteryValues = ['unlearned', 'learning', 'mastered', 'not_mastered'];
   for (const m of masteryValues) {
     const btn = document.querySelector(
@@ -269,15 +269,23 @@ function updateLearningUI(learning: LearningState): void {
     btn.classList.toggle('active', m === learning.mastery);
   }
 
+  const wrongBtn = document.querySelector('[data-wrong]') as HTMLElement | null;
+  if (wrongBtn) {
+    wrongBtn.classList.toggle('active', learning.wrongFlag);
+    wrongBtn.setAttribute('aria-label', learning.wrongFlag ? '取消错题标记' : '标记为错题');
+    wrongBtn.setAttribute('title', learning.wrongFlag ? '取消错题标记' : '标记为错题');
+  }
+
   // 主触发按钮：清掉所有 is-* 再加当前 mastery 的 class，更新中心字符
   const trigger = $('btn-mastery');
   if (trigger) {
     for (const m of masteryValues) {
       trigger.classList.remove(`is-${m}`);
     }
-    trigger.classList.add(`is-${learning.mastery}`);
+    trigger.classList.remove('is-wrong');
+    trigger.classList.add(learning.wrongFlag ? 'is-wrong' : `is-${learning.mastery}`);
     const icon = trigger.querySelector('.mastery-icon');
-    if (icon) icon.textContent = masteryIcon(learning.mastery);
+    if (icon) icon.textContent = learning.wrongFlag ? '✗' : masteryIcon(learning.mastery);
   }
 }
 
@@ -407,6 +415,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  document.querySelector('[data-wrong]')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    vscode.postMessage({ type: 'toggleWrong' });
+    hideMasteryOptions();
+  });
+
   // 点击 fab 之外的任意位置关闭浮动菜单（不阻止事件，让原本的点击仍生效）
   document.addEventListener('click', (e) => {
     const fab = $('mastery-fab');
@@ -443,6 +457,10 @@ window.addEventListener('message', (event) => {
     }
     case 'masteryAck': {
       if (!msg.ok) showStatus(`掌握状态更新失败: ${msg.reason ?? '未知错误'}`);
+      break;
+    }
+    case 'wrongAck': {
+      if (!msg.ok) showStatus(`错题标记更新失败: ${msg.reason ?? '未知错误'}`);
       break;
     }
   }

@@ -278,4 +278,34 @@ describe('PracticeController open(qid)', () => {
     expect(state.currentBank!.learning.get('q-code-1')?.favoriteFlag).toBe(true);
     controller.dispose();
   });
+
+  it('未掌握与错题是两个独立操作', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    vi.spyOn(storage, 'writeWithRollback').mockImplementation(async (params) => {
+      params.applyMemory(params.next);
+      return { ok: true, value: undefined };
+    });
+    const controller = new PracticeController(ctx as any, storage, state);
+
+    await controller.open('q-code-1');
+    const handler = webviewMessageHandlers[0]!;
+    await handler({ type: 'setMastery', value: 'not_mastered' });
+
+    expect(state.currentBank!.learning.get('q-code-1')).toMatchObject({
+      mastery: 'not_mastered',
+      wrongFlag: false,
+    });
+
+    await handler({ type: 'toggleWrong' });
+    expect(state.currentBank!.learning.get('q-code-1')).toMatchObject({
+      mastery: 'not_mastered',
+      wrongFlag: true,
+    });
+    controller.dispose();
+  });
 });

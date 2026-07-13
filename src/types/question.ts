@@ -27,7 +27,7 @@ export type Difficulty = 'easy' | 'medium' | 'hard';
  * - `unlearned`：默认值，从未练习。
  * - `learning`：学习中。
  * - `mastered`：已掌握；切换到该值时 `wrongFlag` 联动置为 false（Req 9.4）。
- * - `not_mastered`：未掌握；切换到该值时 `wrongFlag` 联动置为 true（Req 9.3）。
+ * - `not_mastered`：未掌握；与独立的错题标记互不等同。
  */
 export type MasteryStatus = 'unlearned' | 'learning' | 'mastered' | 'not_mastered';
 

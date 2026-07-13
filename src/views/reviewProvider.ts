@@ -4,7 +4,7 @@
  * TreeDataProvider 实现，渲染三种复习入口及其题目列表。
  *
  * - 三个入口节点：复习未掌握 / 复习收藏 / 复习错题
- * - 进入复习时调用 `buildReviewSet` 做一次性快照
+ * - 每次读取列表时按最新 LearningState 调用 `buildReviewSet`
  * - 空集合消息
  * - 单击触发 `frontendInterview.openQuestion` 命令
  * - 不受 FilterController 影响
@@ -18,7 +18,7 @@ import * as vscode from 'vscode';
 import type { LearningState } from '../types/learning.js';
 import type { Question, QuestionBank } from '../types/question.js';
 import { buildReviewSet, type ReviewKind } from '../domain/reviewSetBuilder.js';
-import { statusToIcon } from './iconRegistry.js';
+import { learningStateVisualStatus, statusToIcon } from './iconRegistry.js';
 
 // ---------------------------------------------------------------------------
 // TreeItem 类型
@@ -54,8 +54,9 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
   private _bank: QuestionBank | undefined;
   private _learningMap: ReadonlyMap<string, LearningState> = new Map();
   private _activeKind: ReviewKind | undefined;
-  private _snapshot: Question[] | undefined;
   private _loadFailed = false;
+
+  constructor(private readonly _extensionUri?: vscode.Uri) {}
 
   /** 设置当前题库与学习状态 */
   setBank(
@@ -64,9 +65,8 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
   ): void {
     this._bank = bank;
     this._learningMap = learning;
-    // 切换 bank 时快照失效
+    // 切换 bank 时重置当前入口
     this._activeKind = undefined;
-    this._snapshot = undefined;
     this._loadFailed = false;
     this.refresh();
   }
@@ -75,21 +75,15 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
   setLoadFailed(): void {
     this._loadFailed = true;
     this._activeKind = undefined;
-    this._snapshot = undefined;
     this.refresh();
   }
 
-  /** 进入某个复习类别，构造快照 */
+  /** 进入某个复习类别；题目集合在读取时根据最新状态计算。 */
   enter(kind: ReviewKind): void {
     if (!this._bank) {
       return;
     }
     this._activeKind = kind;
-    this._snapshot = buildReviewSet(
-      this._bank.questions,
-      this._learningMap,
-      kind,
-    );
     this.refresh();
   }
 
@@ -124,8 +118,8 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
         item.description = parts.join(' | ');
 
         const ls = element.learning;
-        const mastery = ls?.mastery ?? 'unlearned';
-        item.iconPath = statusToIcon(mastery);
+        const visualStatus = learningStateVisualStatus(ls);
+        item.iconPath = statusToIcon(visualStatus, this._extensionUri);
 
         item.command = {
           command: 'frontendInterview.openQuestion',
@@ -164,32 +158,19 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
     }
 
     if (element.kind === 'entry') {
-      // Children of an entry node
-      if (this._activeKind !== element.reviewKind || !this._snapshot) {
-        // Build snapshot on demand if not already active
-        if (!this._bank) {
-          return [{ kind: 'message', text: EMPTY_REVIEW_MESSAGE }];
-        }
-        const snap = buildReviewSet(
-          this._bank.questions,
-          this._learningMap,
-          element.reviewKind,
-        );
-        if (snap.length === 0) {
-          return [{ kind: 'message', text: EMPTY_REVIEW_MESSAGE }];
-        }
-        return snap.map((q) => ({
-          kind: 'question' as const,
-          question: q,
-          learning: this._learningMap.get(q.id),
-        }));
+      if (!this._bank) {
+        return [{ kind: 'message', text: EMPTY_REVIEW_MESSAGE }];
       }
-
-      if (this._snapshot.length === 0) {
+      const currentSet = buildReviewSet(
+        this._bank.questions,
+        this._learningMap,
+        element.reviewKind,
+      );
+      if (currentSet.length === 0) {
         return [{ kind: 'message', text: EMPTY_REVIEW_MESSAGE }];
       }
 
-      return this._snapshot.map((q) => ({
+      return currentSet.map((q) => ({
         kind: 'question' as const,
         question: q,
         learning: this._learningMap.get(q.id),

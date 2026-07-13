@@ -501,11 +501,12 @@ body {
   border-color: rgba(22, 163, 74, 0.5);
 }
 
-.mastery-trigger.is-not_mastered {
+.mastery-trigger.is-wrong {
   color: var(--hard-fg);
   border-color: rgba(220, 38, 38, 0.5);
 }
 
+.mastery-trigger.is-not_mastered,
 .mastery-trigger.is-learning {
   color: var(--med-fg);
   border-color: rgba(202, 138, 4, 0.5);
@@ -522,11 +523,11 @@ body {
 }
 
 .mastery-fab .seg[data-mastery='not_mastered'].active {
-  background: var(--hard-fg);
+  background: var(--med-fg);
 }
 
-.mastery-fab .seg[data-mastery='learning'].active {
-  background: var(--med-fg);
+.mastery-fab .seg[data-wrong].active {
+  background: var(--hard-fg);
 }
 
 .mastery-fab .seg[data-mastery='unlearned'].active {
