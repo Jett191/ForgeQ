@@ -21,7 +21,7 @@ import { importBank } from './importer/importer.js';
 import { PracticeController } from './practice/practiceController.js';
 import { BankRegistry } from './storage/bankRegistry.js';
 import { Storage } from './storage/storage.js';
-import { QuestionListProvider } from './views/questionListProvider.js';
+import { QuestionListProvider, type QuestionTreeItem } from './views/questionListProvider.js';
 import { ReviewProvider } from './views/reviewProvider.js';
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
@@ -65,6 +65,19 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const openQuestionCmd = vscode.commands.registerCommand(
     'frontendInterview.openQuestion',
     (qid: string) => practiceController.open(qid),
+  );
+
+  const deleteAnswerCmd = vscode.commands.registerCommand(
+    'frontendInterview.deleteAnswer',
+    (item: QuestionTreeItem | string | undefined) => {
+      const qid = typeof item === 'string'
+        ? item
+        : item?.kind === 'question'
+          ? item.question.id
+          : undefined;
+      if (qid) return practiceController.deleteAnswer(qid);
+      return undefined;
+    },
   );
 
   const switchBankCmd = vscode.commands.registerCommand(
@@ -120,6 +133,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     reviewView,
     importCmd,
     openQuestionCmd,
+    deleteAnswerCmd,
     switchBankCmd,
     removeBankCmd,
     reviewUnmasteredCmd,

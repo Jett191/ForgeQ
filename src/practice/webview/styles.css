@@ -90,6 +90,7 @@ body {
 
 .q-title {
   flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   font-size: 1.55em;
   font-weight: 600;
@@ -97,7 +98,14 @@ body {
   line-height: 1.35;
 }
 
-.q-fav {
+.q-title-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pad-2);
+}
+
+.q-icon-btn {
   flex: 0 0 auto;
   width: 36px;
   height: 36px;
@@ -114,9 +122,24 @@ body {
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.q-fav:hover {
+.q-icon-btn:hover {
   background: var(--bg-soft);
   color: var(--fg);
+}
+
+.q-icon-btn:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.q-icon-btn svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .q-fav.active {
@@ -131,6 +154,21 @@ body {
 
 .q-fav.active .fav-icon::before {
   content: '★';
+}
+
+@media (max-width: 480px) {
+  .q-title-row {
+    align-items: flex-start;
+  }
+
+  .q-title-actions {
+    gap: var(--pad-1);
+  }
+
+  .q-icon-btn {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 /* 徽章 / 药丸 */
@@ -345,6 +383,7 @@ body {
 .answer-toggle {
   margin-top: var(--pad-6);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }

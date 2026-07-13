@@ -7,6 +7,7 @@
  */
 
 import * as crypto from 'node:crypto';
+import * as os from 'node:os';
 
 import * as vscode from 'vscode';
 
@@ -16,6 +17,11 @@ import { deriveLearningState, toggleWrongFlag } from '../../domain/masteryRules.
 import { getOrDefault } from '../../storage/userDataStore.js';
 import type { InMemoryState, Storage } from '../../storage/storage.js';
 import { deriveQuestionAnswer } from '../practiceFiles.js';
+import {
+  buildQuestionMarkdown,
+  questionMarkdownFileName,
+  type SharedAnswerFile,
+} from '../shareMarkdown.js';
 import type {
   AnswerPayload,
   HostToWebviewMessage,
@@ -138,16 +144,30 @@ export class PracticePanel {
       <div id="question-meta" class="q-meta"></div>
       <div class="q-title-row">
         <h1 id="question-title" class="q-title"></h1>
-        <button id="btn-favorite" class="q-fav" type="button" aria-label="收藏" title="收藏">
-          <span class="fav-icon" aria-hidden="true"></span>
-        </button>
+        <div class="q-title-actions" aria-label="题目操作">
+          <button id="btn-open-project" class="q-icon-btn" type="button" aria-label="项目文件" title="项目文件">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3.5 6.75h6l2 2h9v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.75Z"></path>
+              <path d="M3.5 9.25h17"></path>
+            </svg>
+          </button>
+          <button id="btn-share-markdown" class="q-icon-btn" type="button" aria-label="分享 Markdown" title="分享 Markdown">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 5h5v5"></path>
+              <path d="m19 5-8.5 8.5"></path>
+              <path d="M18 13.5v4a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 17.5v-10A1.5 1.5 0 0 1 6.5 6h4"></path>
+            </svg>
+          </button>
+          <button id="btn-favorite" class="q-icon-btn q-fav" type="button" aria-label="收藏" title="收藏">
+            <span class="fav-icon" aria-hidden="true"></span>
+          </button>
+        </div>
       </div>
     </header>
 
     <article id="question-content" class="md"></article>
 
     <div id="answer-toggle" class="answer-toggle">
-      <button id="btn-open-project" class="btn" type="button">项目文件</button>
       <button id="btn-show-answer" class="btn primary" type="button">查看答案</button>
       <div id="mastery-fab" class="mastery-fab">
         <div class="mastery-options" hidden>
@@ -238,7 +258,8 @@ export class PracticePanel {
   ): Promise<void> {
     const { storage } = this.deps;
 
-    const isReadOnlyMessage = msg.type === 'ready' || msg.type === 'requestAnswer';
+    const isReadOnlyMessage =
+      msg.type === 'ready' || msg.type === 'requestAnswer' || msg.type === 'shareMarkdown';
     const bankStillExists = storage.getCurrentMeta().banks.some((bank) => bank.id === bankId);
     if (!isReadOnlyMessage && !bankStillExists) {
       const reason = '题库已被移除或替换';
@@ -359,6 +380,40 @@ export class PracticePanel {
         break;
       }
 
+      case 'shareMarkdown': {
+        const defaultDirectory =
+          vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(os.homedir());
+        const target = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.joinPath(
+            defaultDirectory,
+            questionMarkdownFileName(question.title),
+          ),
+          filters: { Markdown: ['md'] },
+          saveLabel: '导出 Markdown',
+          title: '选择分享文件的保存位置',
+        });
+
+        if (!target) {
+          this.postMessage(bankId, qid, { type: 'shareAck', ok: false, cancelled: true });
+          break;
+        }
+
+        try {
+          const answerFiles = await this.readAnswerFiles(bankId, qid);
+          const markdown = buildQuestionMarkdown(question, answerFiles);
+          await vscode.workspace.fs.writeFile(target, Buffer.from(markdown, 'utf8'));
+          this.postMessage(bankId, qid, {
+            type: 'shareAck',
+            ok: true,
+            fileName: target.path.split('/').pop() ?? target.path,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          this.postMessage(bankId, qid, { type: 'shareAck', ok: false, reason });
+        }
+        break;
+      }
+
       case 'openNativeEditor': {
         const target = msg.target;
         let fileUri: vscode.Uri | undefined;
@@ -389,5 +444,28 @@ export class PracticePanel {
         break;
       }
     }
+  }
+
+  /** Read every text file in the question project, preferring unsaved editor content. */
+  private async readAnswerFiles(bankId: string, qid: string): Promise<SharedAnswerFile[]> {
+    const files = await this.deps.storage.userData.listQuestionProjectFiles(bankId, qid);
+    const answers: SharedAnswerFile[] = [];
+
+    for (const file of files) {
+      const openDocument = vscode.workspace.textDocuments.find(
+        (document) => document.uri.toString() === file.uri.toString(),
+      );
+      if (openDocument) {
+        answers.push({ relativePath: file.relativePath, content: openDocument.getText() });
+        continue;
+      }
+
+      const bytes = await vscode.workspace.fs.readFile(file.uri);
+      // Ignore obvious binary assets in a project; they cannot be represented usefully as Markdown text.
+      if (bytes.includes(0)) continue;
+      answers.push({ relativePath: file.relativePath, content: Buffer.from(bytes).toString('utf8') });
+    }
+
+    return answers;
   }
 }

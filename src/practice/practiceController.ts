@@ -78,7 +78,7 @@ export class PracticeController {
   }
 
   /**
-   * Open a question: show its project file picker and question Webview.
+   * Open a question: existing answers open directly; first-time answers show the creation picker.
    */
   async open(qid: string): Promise<void> {
     const currentBank = this.state.currentBank;
@@ -89,9 +89,38 @@ export class PracticeController {
     if (!question) return;
 
     this.bindProject(bankId, qid, learning);
-    await this.projectManager.open({ bankId, question });
+    await this.projectManager.open({ bankId, question }, { directIfExists: true });
     // 先固定作答文件到左侧，再创建/聚焦右侧题目面板，避免 VS Code 复用同一编辑器组。
     this.panel.createOrShow(bankId, qid, question, learning, vscode.ViewColumn.Two);
+  }
+
+  /** Delete every answer file for a question while preserving notes and learning state. */
+  async deleteAnswer(qid: string): Promise<void> {
+    const currentBank = this.state.currentBank;
+    if (!currentBank) return;
+    const question = currentBank.bank.questions.find((candidate) => candidate.id === qid);
+    if (!question) return;
+
+    const { bankId } = currentBank;
+    const root = this.storage.userData.getQuestionProjectUri(bankId, qid);
+
+    try {
+      const tabsClosed = await this.closeProjectTabs(root);
+      if (!tabsClosed) return;
+
+      const deleted = await this.storage.userData.deleteQuestionAnswers(bankId, qid);
+      this.clearProjectBindings(bankId, qid);
+      this.removeProjectFromWorkspace(root);
+
+      if (deleted) {
+        await vscode.window.showInformationMessage(`已删除“${question.title}”的全部答案文件`);
+      } else {
+        await vscode.window.showInformationMessage(`“${question.title}”还没有答案文件`);
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      await vscode.window.showErrorMessage(`删除答案失败：${reason}`);
+    }
   }
 
   /**
@@ -136,6 +165,41 @@ export class PracticeController {
   ): void {
     const root = this.storage.userData.getQuestionProjectUri(bankId, qid).toString();
     this.projectBindings.set(root, { bankId, qid, learning });
+  }
+
+  private clearProjectBindings(bankId: string, qid: string): void {
+    for (const [uri, binding] of this.uriBindings) {
+      if (binding.bankId !== bankId || binding.qid !== qid) continue;
+      const timer = this.debounceTimers.get(uri);
+      if (timer !== undefined) clearTimeout(timer);
+      this.debounceTimers.delete(uri);
+      this.uriBindings.delete(uri);
+    }
+    for (const [root, binding] of this.projectBindings) {
+      if (binding.bankId === bankId && binding.qid === qid) {
+        this.projectBindings.delete(root);
+      }
+    }
+  }
+
+  private async closeProjectTabs(root: vscode.Uri): Promise<boolean> {
+    const rootKey = root.toString();
+    const prefix = rootKey.endsWith('/') ? rootKey : `${rootKey}/`;
+    const tabs = vscode.window.tabGroups.all.flatMap((group) =>
+      group.tabs.filter((tab) => {
+        const uri = (tab.input as { uri?: vscode.Uri }).uri;
+        return uri !== undefined && uri.toString().startsWith(prefix);
+      }),
+    );
+    if (tabs.length === 0) return true;
+    return vscode.window.tabGroups.close(tabs, true);
+  }
+
+  private removeProjectFromWorkspace(root: vscode.Uri): void {
+    const index = vscode.workspace.workspaceFolders?.findIndex(
+      (folder) => folder.uri.toString() === root.toString(),
+    ) ?? -1;
+    if (index >= 0) vscode.workspace.updateWorkspaceFolders(index, 1);
   }
 
   private onDocumentChange(uri: vscode.Uri): void {

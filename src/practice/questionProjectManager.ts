@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 
 import type { Storage } from '../storage/storage.js';
+import type { QuestionProjectFile } from '../storage/userDataStore.js';
 import type { Question } from '../types/question.js';
 
 interface ProjectPickItem extends vscode.QuickPickItem {
@@ -26,6 +27,11 @@ export interface QuestionProjectManagerOptions {
   onFileOpened?: (uri: vscode.Uri, bankId: string, qid: string) => void;
 }
 
+export interface QuestionProjectOpenOptions {
+  /** Existing answers open immediately; project-toolbar actions can still request the full menu. */
+  directIfExists?: boolean;
+}
+
 const PRESET_FILES: ReadonlyArray<{ label: string; description: string; fileName: string }> = [
   { label: '$(file-code) JavaScript 文件', description: '创建 index.js', fileName: 'index.js' },
   { label: '$(file-code) JSX 文件', description: '创建 App.jsx', fileName: 'App.jsx' },
@@ -43,7 +49,10 @@ export class QuestionProjectManager {
     private readonly options: QuestionProjectManagerOptions = {},
   ) {}
 
-  async open(context: QuestionProjectContext): Promise<void> {
+  async open(
+    context: QuestionProjectContext,
+    openOptions: QuestionProjectOpenOptions = {},
+  ): Promise<void> {
     const { bankId, question } = context;
     const qid = question.id;
     const root = await this.storage.userData.ensureQuestionProject(bankId, qid);
@@ -57,6 +66,11 @@ export class QuestionProjectManager {
     const files = await this.storage.userData.listQuestionProjectFiles(bankId, qid);
     if (files.length === 0) {
       await this.initialiseProject(root, context);
+      return;
+    }
+
+    if (openOptions.directIfExists) {
+      await this.openFile(this.primaryAnswerFile(files).uri, bankId, qid);
       return;
     }
 
@@ -99,6 +113,18 @@ export class QuestionProjectManager {
     }
   }
 
+  /** Pick a stable primary answer when a project contains more than one file. */
+  private primaryAnswerFile(files: ReadonlyArray<QuestionProjectFile>): QuestionProjectFile {
+    const preferredNames = ['index.js', 'answer.md', 'index.ts', 'App.jsx', 'App.tsx'];
+    for (const name of preferredNames) {
+      const match = files.find(
+        (file) => file.relativePath === name || file.relativePath.endsWith(`/${name}`),
+      );
+      if (match) return match;
+    }
+    return files[0]!;
+  }
+
   private async initialiseProject(
     root: vscode.Uri,
     context: QuestionProjectContext,
@@ -112,7 +138,11 @@ export class QuestionProjectManager {
     const items: InitialPickItem[] = [
       ...presets,
       { label: '$(new-file) 自定义文件名', description: '例如 src/components/App.jsx', action: 'custom' },
-      { label: '$(folder) 空项目文件夹', description: '在新窗口中自行创建文件', action: 'empty' },
+      {
+        label: '$(folder) 空项目文件夹',
+        description: '在当前窗口创建并打开默认 index.js',
+        action: 'empty',
+      },
     ];
 
     const picked = await vscode.window.showQuickPick(items, {
@@ -121,7 +151,13 @@ export class QuestionProjectManager {
     if (!picked) return;
 
     if (picked.action === 'empty') {
-      await vscode.commands.executeCommand('vscode.openFolder', root, true);
+      const uri = await this.storage.userData.ensureQuestionProjectFile(
+        context.bankId,
+        context.question.id,
+        'index.js',
+      );
+      await this.openFile(uri, context.bankId, context.question.id);
+      this.addProjectToWorkspace(root, context.question);
       return;
     }
     if (picked.action === 'custom') {
@@ -135,6 +171,21 @@ export class QuestionProjectManager {
         picked.fileName,
       );
       await this.openFile(uri, context.bankId, context.question.id);
+    }
+  }
+
+  /** Add the per-question project as a root so VS Code Explorer can display its directory tree. */
+  private addProjectToWorkspace(root: vscode.Uri, question: Question): void {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const alreadyAdded = folders.some((folder) => folder.uri.toString() === root.toString());
+    if (alreadyAdded) return;
+
+    const added = vscode.workspace.updateWorkspaceFolders(folders.length, 0, {
+      uri: root,
+      name: `练习：${question.shortTitle ?? question.title}`,
+    });
+    if (!added) {
+      void vscode.window.showWarningMessage('无法把题目项目添加到当前工作区，请稍后重试。');
     }
   }
 
