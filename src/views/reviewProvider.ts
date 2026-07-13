@@ -112,11 +112,6 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
           sidebarQuestionTitle(q),
           vscode.TreeItemCollapsibleState.None,
         );
-        const parts: string[] = [];
-        parts.push(q.type === 'code' ? '代码' : '问答');
-        parts.push(q.difficulty);
-        parts.push(q.category);
-        item.description = parts.join(' | ');
         item.tooltip = q.title;
 
         const ls = element.learning;

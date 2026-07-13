@@ -5,14 +5,13 @@
  *
  * 主要能力：
  *  - 顶层 bank 标题节点；其下默认按 `category` 分组（每组显示题数）；可一键切换为扁平列表。
- *  - 题目节点显示：mastery 图标 / 难度色块文字 / 收藏与笔记小标记。
+ *  - 题目节点只显示侧栏标题与 mastery 图标；题型、难度等信息保留在悬停提示中。
  *  - 集成 FilterController（500ms debounce refresh），并在 bank 节点 description 中以中文摘要展示当前筛选条件。
  *  - 单击题目节点触发 `frontendInterview.openQuestion`。
  *
  * 设计要点：
  *  - `groupByCategory` 默认 true，当只有一个分类时自动跳过分类层（避免出现"100 道题挂在一个 JavaScript 文件夹下"的多余一层）。
  *  - 顺序保留：每个分类内部题目按 `QuestionBank.questions` 原始顺序排列，分类列出顺序由分类首次出现位置决定。
- *  - 难度色块在 description 里通过文本符号近似呈现（VS Code TreeItem description 不支持富文本，只能靠图标 + 简短文字）。
  *
  * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.9, 4.10, 8.4, 9.5
  */
@@ -234,19 +233,6 @@ export class QuestionListProvider implements vscode.TreeDataProvider<QuestionTre
         const ls = element.learning;
         const visualStatus = learningStateVisualStatus(ls);
         item.iconPath = statusToIcon(visualStatus, this._extensionUri);
-
-        // description: 类型 · 难度 [· 分类（仅扁平模式且筛选未限定分类时显示）] [收藏 / 笔记标记]
-        const descParts: string[] = [];
-        descParts.push(TYPE_LABEL[q.type]);
-        descParts.push(DIFFICULTY_LABEL[q.difficulty]);
-        if (!this._groupByCategory) {
-          descParts.push(q.category);
-        }
-        const flags: string[] = [];
-        if (ls?.favoriteFlag) flags.push('★');
-        if (ls?.hasNote) flags.push('📝');
-        if (flags.length > 0) descParts.push(flags.join(''));
-        item.description = descParts.join(' · ');
 
         // tooltip
         const tooltipLines = [

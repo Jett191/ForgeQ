@@ -174,11 +174,13 @@ describe('QuestionListProvider example', () => {
       expect(children[0]!.question.id).toBe('q1');
       const item = provider.getTreeItem(children[0]);
       expect(item.label).toBe('First');
+      expect(item.description).toBeUndefined();
     }
     if (children[1]!.kind === 'question') {
       expect(children[1]!.question.id).toBe('q2');
       const item = provider.getTreeItem(children[1]);
       expect(item.label).toBe('Second');
+      expect(item.description).toBeUndefined();
     }
   });
 

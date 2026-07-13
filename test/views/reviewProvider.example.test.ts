@@ -245,6 +245,7 @@ describe('ReviewProvider example', () => {
     if (first.kind === 'question') {
       const item = provider.getTreeItem(first);
       expect(item.label).toBe('短标题 Q1');
+      expect(item.description).toBeUndefined();
       expect(item.tooltip).toBe('Q1');
     }
   });
