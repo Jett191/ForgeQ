@@ -11,6 +11,11 @@ import * as vscode from 'vscode';
 
 import type { BankRegistry } from '../storage/bankRegistry.js';
 import type { InMemoryState, Storage } from '../storage/storage.js';
+import {
+  syncProviders,
+  type QuestionListSyncTarget,
+  type ReviewSyncTarget,
+} from '../views/providerSync.js';
 
 /**
  * 切换当前激活题库。
@@ -19,8 +24,8 @@ export async function switchBank(
   registry: BankRegistry,
   storage: Storage,
   state: InMemoryState,
-  listProvider: { refresh(): void },
-  reviewProvider: { refresh(): void },
+  listProvider: QuestionListSyncTarget,
+  reviewProvider: ReviewSyncTarget,
 ): Promise<void> {
   const banks = registry.list();
   if (banks.length === 0) {
@@ -47,12 +52,13 @@ export async function switchBank(
     const bank = await storage.banks.readBank(selected.bankId);
     const learning = await storage.userData.readLearningMap(selected.bankId);
     state.currentBank = { bankId: selected.bankId, bank, learning };
-  } catch {
+  } catch (err) {
     delete state.currentBank;
+    const cause = err instanceof Error ? err.message : String(err);
+    await vscode.window.showErrorMessage(`切换题库失败: ${cause}`);
   }
 
-  listProvider.refresh();
-  reviewProvider.refresh();
+  syncProviders(state, registry.current(), listProvider, reviewProvider);
 }
 
 /**
@@ -61,8 +67,8 @@ export async function switchBank(
 export async function removeBank(
   registry: BankRegistry,
   state: InMemoryState,
-  listProvider: { refresh(): void },
-  reviewProvider: { refresh(): void },
+  listProvider: QuestionListSyncTarget,
+  reviewProvider: ReviewSyncTarget,
 ): Promise<void> {
   const banks = registry.list();
   if (banks.length === 0) {
@@ -97,6 +103,5 @@ export async function removeBank(
     delete state.currentBank;
   }
 
-  listProvider.refresh();
-  reviewProvider.refresh();
+  syncProviders(state, registry.current(), listProvider, reviewProvider);
 }

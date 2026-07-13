@@ -12,6 +12,11 @@ import * as vscode from 'vscode';
 import type { BankRegistry } from '../storage/bankRegistry.js';
 import type { InMemoryState, Storage } from '../storage/storage.js';
 import { parse } from '../parser/parser.js';
+import {
+  syncProviders,
+  type QuestionListSyncTarget,
+  type ReviewSyncTarget,
+} from '../views/providerSync.js';
 
 /** 10 MB 上限（字节）。 */
 const FILE_SIZE_LIMIT = 10 * 1024 * 1024;
@@ -34,7 +39,8 @@ export async function importBank(
   storage: Storage,
   registry: BankRegistry,
   state: InMemoryState,
-  listProvider: { refresh(): void },
+  listProvider: QuestionListSyncTarget,
+  reviewProvider?: ReviewSyncTarget,
 ): Promise<void> {
   // Step 1: 弹出文件选择对话框
   const fileUris = await vscode.window.showOpenDialog({
@@ -134,13 +140,15 @@ export async function importBank(
       const learning = await storage.userData.readLearningMap(meta.currentBankId);
       state.currentBank = { bankId: meta.currentBankId, bank: loadedBank, learning };
     }
-  } catch {
-    // Non-fatal: state will be stale but UI will still refresh
+  } catch (err) {
+    delete state.currentBank;
+    const cause = err instanceof Error ? err.message : String(err);
+    await vscode.window.showErrorMessage(`题库已导入，但加载失败: ${cause}`);
   }
 
   // Step 8: 成功提示 + 刷新列表
   await vscode.window.showInformationMessage(
     `导入成功！共 ${bank.questions.length} 道题目。`,
   );
-  listProvider.refresh();
+  syncProviders(state, registry.current(), listProvider, reviewProvider);
 }

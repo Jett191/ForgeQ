@@ -20,6 +20,16 @@ import { PracticePanel } from './webview/panel.js';
 /** 1000ms debounce for lastPracticedAt updates. */
 const DEBOUNCE_MS = 1000;
 
+interface OpenDocumentBinding {
+  bankId: string;
+  qid: string;
+  learning: Map<string, import('../types/learning.js').LearningState>;
+}
+
+export interface PracticeControllerOptions {
+  onLearningChanged?: (bankId: string, qid: string) => void;
+}
+
 /**
  * PracticeController manages opening questions, creating webview panels,
  * and watching file changes to update lastPracticedAt.
@@ -29,18 +39,22 @@ export class PracticeController {
   private readonly saveSubscription: vscode.Disposable;
   private readonly changeSubscription: vscode.Disposable;
   private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  /** Tracks which URIs map to which qid. */
-  private readonly uriToQid = new Map<string, string>();
+  /** Tracks the bank and question that own each open practice document. */
+  private readonly uriBindings = new Map<string, OpenDocumentBinding>();
 
   constructor(
     private readonly ctx: vscode.ExtensionContext,
     private readonly storage: Storage,
     private readonly state: InMemoryState,
+    private readonly options: PracticeControllerOptions = {},
   ) {
     this.panel = new PracticePanel({
       storage,
       state,
       extensionUri: ctx.extensionUri,
+      ...(options.onLearningChanged !== undefined
+        ? { onLearningChanged: options.onLearningChanged }
+        : {}),
     });
 
     this.saveSubscription = vscode.workspace.onDidSaveTextDocument((doc) => {
@@ -70,23 +84,20 @@ export class PracticeController {
     }
 
     // Show webview panel
-    this.panel.createOrShow(qid, question, vscode.ViewColumn.Two);
+    this.panel.createOrShow(bankId, qid, question, learning, vscode.ViewColumn.Two);
   }
 
   /**
    * Close a question's panel and subscriptions.
    */
-  close(qid: string): void {
-    this.panel.close(qid);
-    const timer = this.debounceTimers.get(qid);
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      this.debounceTimers.delete(qid);
-    }
-    // Clean up URI mappings for this qid
-    for (const [uri, id] of this.uriToQid) {
-      if (id === qid) {
-        this.uriToQid.delete(uri);
+  close(bankId: string, qid: string): void {
+    this.panel.close(bankId, qid);
+    for (const [uri, binding] of this.uriBindings) {
+      if (binding.bankId === bankId && binding.qid === qid) {
+        const timer = this.debounceTimers.get(uri);
+        if (timer !== undefined) clearTimeout(timer);
+        this.debounceTimers.delete(uri);
+        this.uriBindings.delete(uri);
       }
     }
   }
@@ -102,7 +113,7 @@ export class PracticeController {
       clearTimeout(timer);
     }
     this.debounceTimers.clear();
-    this.uriToQid.clear();
+    this.uriBindings.clear();
   }
 
   private async openCode(
@@ -118,7 +129,7 @@ export class PracticeController {
       bankId, qid, 'code', ext, init,
     );
 
-    this.uriToQid.set(fileUri.toString(), qid);
+    this.uriBindings.set(fileUri.toString(), { bankId, qid, learning });
 
     const doc = await vscode.workspace.openTextDocument(fileUri);
     await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
@@ -128,45 +139,45 @@ export class PracticeController {
     bankId: string,
     qid: string,
     _question: import('../types/question.js').QAQuestion,
-    _learning: Map<string, import('../types/learning.js').LearningState>,
+    learning: Map<string, import('../types/learning.js').LearningState>,
   ): Promise<void> {
     const fileUri = await this.storage.userData.ensurePracticeFile(
       bankId, qid, 'qa', '.md', '',
     );
 
-    this.uriToQid.set(fileUri.toString(), qid);
+    this.uriBindings.set(fileUri.toString(), { bankId, qid, learning });
 
     const doc = await vscode.workspace.openTextDocument(fileUri);
     await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
   }
 
   private onDocumentChange(uri: vscode.Uri): void {
-    const qid = this.uriToQid.get(uri.toString());
-    if (!qid) return;
+    const uriKey = uri.toString();
+    const binding = this.uriBindings.get(uriKey);
+    if (!binding) return;
 
     // Debounce: schedule lastPracticedAt update
-    const existing = this.debounceTimers.get(qid);
+    const existing = this.debounceTimers.get(uriKey);
     if (existing !== undefined) {
       clearTimeout(existing);
     }
     this.debounceTimers.set(
-      qid,
+      uriKey,
       setTimeout(() => {
-        this.debounceTimers.delete(qid);
-        void this.updateLastPracticed(qid);
+        this.debounceTimers.delete(uriKey);
+        void this.updateLastPracticed(binding);
       }, DEBOUNCE_MS),
     );
   }
 
-  private async updateLastPracticed(qid: string): Promise<void> {
-    const currentBank = this.state.currentBank;
-    if (!currentBank) return;
-
-    const { bankId, learning } = currentBank;
+  private async updateLastPracticed(binding: OpenDocumentBinding): Promise<void> {
+    const { bankId, qid, learning } = binding;
+    // A removed/replaced bank must not be recreated by a delayed editor event.
+    if (!this.storage.getCurrentMeta().banks.some((bank) => bank.id === bankId)) return;
     const prev = getOrDefault(learning.get(qid));
     const next = { ...prev, lastPracticedAt: Date.now() };
 
-    await this.storage.writeWithRollback({
+    const result = await this.storage.writeWithRollback({
       prev,
       next,
       applyMemory: (v) => { learning.set(qid, v); },
@@ -174,5 +185,6 @@ export class PracticeController {
       onRollback: (v) => { learning.set(qid, v); },
       path: 'learning.json',
     });
+    if (result.ok) this.options.onLearningChanged?.(bankId, qid);
   }
 }

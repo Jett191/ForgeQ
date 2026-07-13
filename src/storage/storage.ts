@@ -333,6 +333,20 @@ export class Storage {
   }
 
   /**
+   * Persist a current-bank selection and update this facade's in-memory meta
+   * snapshot in the same operation. Returns false for an unknown bank id.
+   */
+  async switchToBank(bankId: string): Promise<boolean> {
+    if (!this.currentMeta.banks.some((bank) => bank.id === bankId)) return false;
+    if (this.currentMeta.currentBankId === bankId) return true;
+
+    const nextMeta: BankMeta = { ...this.currentMeta, currentBankId: bankId };
+    await this.meta.writeAtomic(nextMeta);
+    this.currentMeta = nextMeta;
+    return true;
+  }
+
+  /**
    * 移除指定 bank。把 `banks/<bankId>` 与 `user-data/<bankId>` 搬入 trash，
    * 再原子写一次 `meta.json` 把它从摘要列表移除；若移除的是当前激活 bank，
    * 同步把 `currentBankId` 清空并刷新 globalState。
