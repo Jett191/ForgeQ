@@ -345,6 +345,7 @@ body {
 .answer-toggle {
   margin-top: var(--pad-6);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }

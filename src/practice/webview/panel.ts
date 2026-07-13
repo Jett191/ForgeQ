@@ -7,6 +7,7 @@
  */
 
 import * as crypto from 'node:crypto';
+import * as os from 'node:os';
 
 import * as vscode from 'vscode';
 
@@ -16,6 +17,7 @@ import { deriveLearningState, toggleWrongFlag } from '../../domain/masteryRules.
 import { getOrDefault } from '../../storage/userDataStore.js';
 import type { InMemoryState, Storage } from '../../storage/storage.js';
 import { deriveQuestionAnswer } from '../practiceFiles.js';
+import { buildQuestionMarkdown, questionMarkdownFileName } from '../shareMarkdown.js';
 import type {
   AnswerPayload,
   HostToWebviewMessage,
@@ -148,6 +150,7 @@ export class PracticePanel {
 
     <div id="answer-toggle" class="answer-toggle">
       <button id="btn-open-project" class="btn" type="button">项目文件</button>
+      <button id="btn-share-markdown" class="btn" type="button">分享 Markdown</button>
       <button id="btn-show-answer" class="btn primary" type="button">查看答案</button>
       <div id="mastery-fab" class="mastery-fab">
         <div class="mastery-options" hidden>
@@ -238,7 +241,8 @@ export class PracticePanel {
   ): Promise<void> {
     const { storage } = this.deps;
 
-    const isReadOnlyMessage = msg.type === 'ready' || msg.type === 'requestAnswer';
+    const isReadOnlyMessage =
+      msg.type === 'ready' || msg.type === 'requestAnswer' || msg.type === 'shareMarkdown';
     const bankStillExists = storage.getCurrentMeta().banks.some((bank) => bank.id === bankId);
     if (!isReadOnlyMessage && !bankStillExists) {
       const reason = '题库已被移除或替换';
@@ -356,6 +360,39 @@ export class PracticePanel {
 
       case 'openProject': {
         await this.deps.onOpenProject?.(bankId, qid, question, learningMap);
+        break;
+      }
+
+      case 'shareMarkdown': {
+        const defaultDirectory =
+          vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(os.homedir());
+        const target = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.joinPath(
+            defaultDirectory,
+            questionMarkdownFileName(question.title),
+          ),
+          filters: { Markdown: ['md'] },
+          saveLabel: '导出 Markdown',
+          title: '选择分享文件的保存位置',
+        });
+
+        if (!target) {
+          this.postMessage(bankId, qid, { type: 'shareAck', ok: false, cancelled: true });
+          break;
+        }
+
+        try {
+          const markdown = buildQuestionMarkdown(question);
+          await vscode.workspace.fs.writeFile(target, Buffer.from(markdown, 'utf8'));
+          this.postMessage(bankId, qid, {
+            type: 'shareAck',
+            ok: true,
+            fileName: target.path.split('/').pop() ?? target.path,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          this.postMessage(bankId, qid, { type: 'shareAck', ok: false, reason });
+        }
         break;
       }
 

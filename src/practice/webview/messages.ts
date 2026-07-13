@@ -30,7 +30,14 @@ export type HostToWebviewMessage =
   | { type: 'refreshLearning'; payload: LearningState }
   | { type: 'masteryAck'; ok: boolean; reason?: string }
   | { type: 'wrongAck'; ok: boolean; reason?: string }
-  | { type: 'favoriteAck'; ok: boolean; reason?: string };
+  | { type: 'favoriteAck'; ok: boolean; reason?: string }
+  | {
+      type: 'shareAck';
+      ok: boolean;
+      cancelled?: boolean;
+      fileName?: string;
+      reason?: string;
+    };
 
 /**
  * "查看答案" 的 payload。题型只用于标签，答案结构完全相同。
@@ -50,5 +57,6 @@ export type WebviewToHostMessage =
   | { type: 'toggleWrong' }
   | { type: 'setMastery'; value: MasteryStatus }
   | { type: 'openProject' }
+  | { type: 'shareMarkdown' }
   | { type: 'openNativeEditor'; target: 'code' | 'qa' | 'note' }
   | { type: 'requestNotePreview' };

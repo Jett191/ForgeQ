@@ -26,6 +26,8 @@ interface HostToWebviewMessage {
   type: string;
   payload?: unknown;
   ok?: boolean;
+  cancelled?: boolean;
+  fileName?: string;
   reason?: string;
 }
 
@@ -328,6 +330,10 @@ document.addEventListener('DOMContentLoaded', () => {
     vscode.postMessage({ type: 'openProject' });
   });
 
+  $('btn-share-markdown')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'shareMarkdown' });
+  });
+
   $('btn-show-answer')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'requestAnswer' });
   });
@@ -407,6 +413,14 @@ window.addEventListener('message', (event) => {
     }
     case 'wrongAck': {
       if (!msg.ok) showStatus(`错题标记更新失败: ${msg.reason ?? '未知错误'}`);
+      break;
+    }
+    case 'shareAck': {
+      if (msg.ok) {
+        showStatus(`已导出 ${msg.fileName ?? 'Markdown 文件'}`);
+      } else if (!msg.cancelled) {
+        showStatus(`导出失败: ${msg.reason ?? '未知错误'}`);
+      }
       break;
     }
   }
