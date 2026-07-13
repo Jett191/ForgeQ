@@ -29,6 +29,12 @@ export interface PanelDeps {
   state: InMemoryState;
   extensionUri: vscode.Uri;
   onLearningChanged?: (bankId: string, qid: string) => void;
+  onOpenProject?: (
+    bankId: string,
+    qid: string,
+    question: Question,
+    learning: Map<string, LearningState>,
+  ) => Promise<void>;
 }
 
 interface PanelInstance {
@@ -141,6 +147,7 @@ export class PracticePanel {
     <article id="question-content" class="md"></article>
 
     <div id="answer-toggle" class="answer-toggle">
+      <button id="btn-open-project" class="btn" type="button">项目文件</button>
       <button id="btn-show-answer" class="btn primary" type="button">查看答案</button>
       <div id="mastery-fab" class="mastery-fab">
         <div class="mastery-options" hidden>
@@ -347,14 +354,18 @@ export class PracticePanel {
         break;
       }
 
+      case 'openProject': {
+        await this.deps.onOpenProject?.(bankId, qid, question, learningMap);
+        break;
+      }
+
       case 'openNativeEditor': {
         const target = msg.target;
         let fileUri: vscode.Uri | undefined;
 
         if (target === 'code' || target === 'qa') {
-          fileUri = await storage.userData.ensurePracticeFile(
-            bankId, qid, 'qa', '.md', '',
-          );
+          await this.deps.onOpenProject?.(bankId, qid, question, learningMap);
+          break;
         } else if (target === 'note') {
           fileUri = await storage.userData.ensurePracticeFile(
             bankId, qid, 'note', '.md', '',

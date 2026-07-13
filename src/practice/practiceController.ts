@@ -1,7 +1,7 @@
 /**
  * PracticeController（Task 19）。
  *
- * 编排练习流程：打开题目文件 + Webview Panel，监听文件保存以更新 lastPracticedAt。
+ * 编排练习流程：打开单题项目 + Webview Panel，监听项目文件保存以更新 lastPracticedAt。
  *
  * Validates: Requirements 5.1, 5.3, 6.1, 6.3, 7.1
  */
@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 
 import type { InMemoryState, Storage } from '../storage/storage.js';
 import { getOrDefault } from '../storage/userDataStore.js';
+import { QuestionProjectManager } from './questionProjectManager.js';
 import { PracticePanel } from './webview/panel.js';
 
 /** 1000ms debounce for lastPracticedAt updates. */
@@ -31,11 +32,14 @@ export interface PracticeControllerOptions {
  */
 export class PracticeController {
   private readonly panel: PracticePanel;
+  private readonly projectManager: QuestionProjectManager;
   private readonly saveSubscription: vscode.Disposable;
   private readonly changeSubscription: vscode.Disposable;
   private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Tracks the bank and question that own each open practice document. */
   private readonly uriBindings = new Map<string, OpenDocumentBinding>();
+  /** Tracks whole project roots so files created later in Explorer are also recognised. */
+  private readonly projectBindings = new Map<string, OpenDocumentBinding>();
 
   constructor(
     private readonly ctx: vscode.ExtensionContext,
@@ -43,10 +47,22 @@ export class PracticeController {
     private readonly state: InMemoryState,
     private readonly options: PracticeControllerOptions = {},
   ) {
+    this.projectManager = new QuestionProjectManager(storage, {
+      onFileOpened: (uri, bankId, qid) => {
+        const binding = [...this.projectBindings.values()].find(
+          (candidate) => candidate.bankId === bankId && candidate.qid === qid,
+        );
+        if (binding) this.uriBindings.set(uri.toString(), binding);
+      },
+    });
     this.panel = new PracticePanel({
       storage,
       state,
       extensionUri: ctx.extensionUri,
+      onOpenProject: async (bankId, qid, question, learning) => {
+        this.bindProject(bankId, qid, learning);
+        await this.projectManager.open({ bankId, question });
+      },
       ...(options.onLearningChanged !== undefined
         ? { onLearningChanged: options.onLearningChanged }
         : {}),
@@ -62,7 +78,7 @@ export class PracticeController {
   }
 
   /**
-   * Open a question: ensure practice file, open in editor, show webview.
+   * Open a question: show its project file picker and question Webview.
    */
   async open(qid: string): Promise<void> {
     const currentBank = this.state.currentBank;
@@ -72,9 +88,9 @@ export class PracticeController {
     const question = bank.questions.find((q) => q.id === qid);
     if (!question) return;
 
-    await this.openMarkdown(bankId, qid, learning);
-
-    // Show webview panel
+    this.bindProject(bankId, qid, learning);
+    await this.projectManager.open({ bankId, question });
+    // 先固定作答文件到左侧，再创建/聚焦右侧题目面板，避免 VS Code 复用同一编辑器组。
     this.panel.createOrShow(bankId, qid, question, learning, vscode.ViewColumn.Two);
   }
 
@@ -91,6 +107,11 @@ export class PracticeController {
         this.uriBindings.delete(uri);
       }
     }
+    for (const [root, binding] of this.projectBindings) {
+      if (binding.bankId === bankId && binding.qid === qid) {
+        this.projectBindings.delete(root);
+      }
+    }
   }
 
   /**
@@ -105,26 +126,30 @@ export class PracticeController {
     }
     this.debounceTimers.clear();
     this.uriBindings.clear();
+    this.projectBindings.clear();
   }
 
-  private async openMarkdown(
+  private bindProject(
     bankId: string,
     qid: string,
     learning: Map<string, import('../types/learning.js').LearningState>,
-  ): Promise<void> {
-    const fileUri = await this.storage.userData.ensurePracticeFile(
-      bankId, qid, 'qa', '.md', '',
-    );
-
-    this.uriBindings.set(fileUri.toString(), { bankId, qid, learning });
-
-    const doc = await vscode.workspace.openTextDocument(fileUri);
-    await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
+  ): void {
+    const root = this.storage.userData.getQuestionProjectUri(bankId, qid).toString();
+    this.projectBindings.set(root, { bankId, qid, learning });
   }
 
   private onDocumentChange(uri: vscode.Uri): void {
     const uriKey = uri.toString();
-    const binding = this.uriBindings.get(uriKey);
+    let binding = this.uriBindings.get(uriKey);
+    if (!binding) {
+      for (const [root, candidate] of this.projectBindings) {
+        const prefix = root.endsWith('/') ? root : `${root}/`;
+        if (uriKey.startsWith(prefix)) {
+          binding = candidate;
+          break;
+        }
+      }
+    }
     if (!binding) return;
 
     // Debounce: schedule lastPracticedAt update

@@ -49,5 +49,6 @@ export type WebviewToHostMessage =
   | { type: 'toggleFavorite' }
   | { type: 'toggleWrong' }
   | { type: 'setMastery'; value: MasteryStatus }
+  | { type: 'openProject' }
   | { type: 'openNativeEditor'; target: 'code' | 'qa' | 'note' }
   | { type: 'requestNotePreview' };

@@ -324,6 +324,10 @@ function showStatus(msg: string): void {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  $('btn-open-project')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'openProject' });
+  });
+
   $('btn-show-answer')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'requestAnswer' });
   });

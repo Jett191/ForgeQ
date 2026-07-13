@@ -10,6 +10,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 const openTextDocumentCalls: unknown[] = [];
 const showTextDocumentCalls: unknown[] = [];
 const createWebviewPanelCalls: unknown[] = [];
+const layoutCallOrder: string[] = [];
 const mockPostMessage = vi.fn();
 const changeTextDocumentHandlers: Array<(event: { document: { uri: unknown } }) => void> = [];
 const webviewMessageHandlers: Array<(message: unknown) => Promise<void>> = [];
@@ -29,11 +30,18 @@ vi.mock('vscode', () => {
     ViewColumn: { One: 1, Two: 2, Three: 3 },
     window: {
       ...base.window,
+      showQuickPick: async (items: Array<{ fileName?: string; action?: string }>) =>
+        items.find((item) => item.fileName === 'index.js') ??
+        items.find((item) => item.action === 'file'),
+      showInputBox: async () => undefined,
+      createTerminal: vi.fn(() => ({ show: vi.fn(), dispose: vi.fn() })),
       showTextDocument: async (doc: unknown, column?: unknown) => {
+        layoutCallOrder.push('answer');
         showTextDocumentCalls.push({ doc, column });
         return {};
       },
       createWebviewPanel: (viewType: string, title: string, column: unknown, opts: unknown) => {
+        layoutCallOrder.push('question');
         createWebviewPanelCalls.push({ viewType, title, column, opts });
         return {
           webview: {
@@ -114,12 +122,13 @@ describe('PracticeController open(qid)', () => {
     openTextDocumentCalls.length = 0;
     showTextDocumentCalls.length = 0;
     createWebviewPanelCalls.length = 0;
+    layoutCallOrder.length = 0;
     changeTextDocumentHandlers.length = 0;
     webviewMessageHandlers.length = 0;
     mockPostMessage.mockClear();
   });
 
-  it('代码题与问答题一样使用 Markdown 练习文件并创建 WebviewPanel', async () => {
+  it('代码题首次打开时创建单题项目文件并创建 WebviewPanel', async () => {
     const ctx = harness.createExtensionContext();
     (ctx as any).extensionUri = HarnessUri.file('/ext');
     const storage = await Storage.create(ctx as any);
@@ -130,7 +139,7 @@ describe('PracticeController open(qid)', () => {
 
     // Reload state
     const state = await storage.bootstrap();
-    const ensurePracticeFile = vi.spyOn(storage.userData, 'ensurePracticeFile');
+    const ensureProjectFile = vi.spyOn(storage.userData, 'ensureQuestionProjectFile');
 
     const controller = new PracticeController(ctx as any, storage, state);
 
@@ -141,24 +150,23 @@ describe('PracticeController open(qid)', () => {
 
     // showTextDocument should have been called with ViewColumn.One
     expect(showTextDocumentCalls.length).toBe(1);
-    expect(showTextDocumentCalls[0]).toHaveProperty('column', 1);
-    expect(ensurePracticeFile).toHaveBeenCalledWith(
+    expect(showTextDocumentCalls[0]).toHaveProperty('column.viewColumn', 1);
+    expect(ensureProjectFile).toHaveBeenCalledWith(
       state.currentBank!.bankId,
       'q-code-1',
-      'qa',
-      '.md',
-      '',
+      'index.js',
     );
 
     // WebviewPanel should have been created
     expect(createWebviewPanelCalls.length).toBe(1);
     expect(createWebviewPanelCalls[0]).toHaveProperty('title', 'Implement sum');
     expect(createWebviewPanelCalls[0]).toHaveProperty('column', 2);
+    expect(layoutCallOrder).toEqual(['answer', 'question']);
 
     controller.dispose();
   });
 
-  it('问答题: ensurePracticeFile + openTextDocument + showTextDocument + WebviewPanel', async () => {
+  it('问答题也可选择项目文件并与 WebviewPanel 同时打开', async () => {
     const ctx = harness.createExtensionContext();
     (ctx as any).extensionUri = HarnessUri.file('/ext');
     const storage = await Storage.create(ctx as any);
