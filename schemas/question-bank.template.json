@@ -42,19 +42,9 @@
         "Set"
       ],
       "difficulty": "easy",
-      "answer": "function unique(values) {\n  return [...new Set(values)];\n}",
-      "language": "javascript",
-      "initialCode": "function unique(values) {\n  // 在这里编写代码\n}",
-      "referenceCode": "function unique(values) {\n  return [...new Set(values)];\n}",
-      "testCases": [
-        {
-          "name": "基本用例",
-          "input": "[1, 1, 2, 3, 3]",
-          "expected": "[1, 2, 3]",
-          "description": "重复元素只保留第一次出现的位置。"
-        }
-      ],
-      "solutionExplanation": "Set 会按照元素首次插入的顺序保存唯一值，再使用展开运算符转换为数组。"
+      "answer": "使用 Set 保存唯一值，再转换回数组。",
+      "briefAnswer": "使用 Set 保存唯一值，再转换回数组。",
+      "detailedAnswer": "```javascript\nfunction unique(values) {\n  return [...new Set(values)];\n}\n```\n\nSet 会按照元素首次插入的顺序保存唯一值，再使用展开运算符转换为数组。"
     }
   ]
 }

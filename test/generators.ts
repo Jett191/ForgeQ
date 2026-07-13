@@ -170,18 +170,14 @@ export const arbSavedContent: fc.Arbitrary<string | undefined> = fc.option(
  * 生成一道符合 schema 约束的代码题。
  *
  * 必填字段（`id` / `type` / `title` / `content` / `category` / `tags` /
- * `difficulty` / `answer`）始终满足 Req 1.1 的长度上限；可选子类型字段
- * （`language` / `initialCode` / `codeTemplate` / `referenceCode`）每个都以
+ * `difficulty` / `answer`）始终满足 Req 1.1 的长度上限；两种题型共享的
+ * Markdown 答案字段与历史代码兼容字段都独立采样。
+ * 历史字段（`language` / `initialCode` / `codeTemplate` / `referenceCode`）以
  * `fc.option(_, { nil: null })` 的形式独立采样，命中 `null` 时显式不写入键，
  * 避免在 `exactOptionalPropertyTypes: true` 下把 `undefined` 写进可选字段。
  *
- * 这些可选字段对 Task 7.2 (Property 14) 的派生函数测试至关重要：
- * - `language` 决定 `extForLanguage` / `deriveLanguageMode` 的分支；
- * - `initialCode` / `codeTemplate` 决定 `initialCodeContent` 的回退链；
- * - `referenceCode` 决定 `deriveCodeAnswer` 的回退链。
- *
- * 对未引用这些字段的下游测试（例如 ReviewSetBuilder PBT）保持向后兼容，
- * 因为额外字段都是可选键，不会破坏既有断言。
+ * 历史代码字段继续参与 Parser / Formatter round-trip 覆盖，但不会改变练习
+ * 页面行为；公共答案字段用于验证 code 与 qa 使用相同的数据结构。
  */
 const arbCodeQuestionWithId = (id: string): fc.Arbitrary<CodeQuestion> =>
   fc
@@ -195,6 +191,28 @@ const arbCodeQuestionWithId = (id: string): fc.Arbitrary<CodeQuestion> =>
       tags: fc.array(arbTag, { minLength: 0, maxLength: 5 }),
       difficulty: arbDifficulty,
       answer: fc.string({ maxLength: 200, unit: 'grapheme-ascii' }),
+      briefAnswer: fc.option(fc.string({ maxLength: 200, unit: 'grapheme-ascii' }), {
+        nil: null,
+      }),
+      detailedAnswer: fc.option(fc.string({ maxLength: 200, unit: 'grapheme-ascii' }), {
+        nil: null,
+      }),
+      followUps: fc.option(
+        fc.array(
+          fc.record({
+            question: arbConstrainedString(100),
+            answer: fc.option(fc.string({ maxLength: 100, unit: 'grapheme-ascii' }), {
+              nil: null,
+            }),
+          }).map(({ question, answer }) => {
+            const fu: { question: string; answer?: string } = { question };
+            if (answer !== null) fu.answer = answer;
+            return fu;
+          }),
+          { maxLength: 3 },
+        ),
+        { nil: null },
+      ),
       // Optional discriminated-union extras —— `null` 占位避免显式 undefined。
       language: fc.option(arbLanguage, { nil: null }),
       initialCode: fc.option(fc.string({ maxLength: 200, unit: 'grapheme-ascii' }), {
@@ -207,9 +225,12 @@ const arbCodeQuestionWithId = (id: string): fc.Arbitrary<CodeQuestion> =>
         nil: null,
       }),
     })
-    .map(({ shortTitle, language, initialCode, codeTemplate, referenceCode, ...base }) => {
+    .map(({ shortTitle, briefAnswer, detailedAnswer, followUps, language, initialCode, codeTemplate, referenceCode, ...base }) => {
       const out: CodeQuestion = base;
       if (shortTitle !== null) out.shortTitle = shortTitle;
+      if (briefAnswer !== null) out.briefAnswer = briefAnswer;
+      if (detailedAnswer !== null) out.detailedAnswer = detailedAnswer;
+      if (followUps !== null) out.followUps = followUps;
       if (language !== null) out.language = language;
       if (initialCode !== null) out.initialCode = initialCode;
       if (codeTemplate !== null) out.codeTemplate = codeTemplate;
@@ -222,7 +243,7 @@ const arbCodeQuestionWithId = (id: string): fc.Arbitrary<CodeQuestion> =>
  *
  * 与 `arbCodeQuestionWithId` 同思路：必填字段稳定满足 schema 约束；可选
  * 子类型字段（`briefAnswer` / `detailedAnswer` / `followUps`）每个独立 ~50%
- * 概率出现，覆盖 `deriveQAAnswer` 的优先级回退链与 followUps 缺省分支。
+ * 概率出现，覆盖统一答案派生的优先级回退链与 followUps 缺省分支。
  */
 const arbQAQuestionWithId = (id: string): fc.Arbitrary<QAQuestion> =>
   fc

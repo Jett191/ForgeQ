@@ -10,11 +10,6 @@ import * as vscode from 'vscode';
 
 import type { InMemoryState, Storage } from '../storage/storage.js';
 import { getOrDefault } from '../storage/userDataStore.js';
-import {
-  extForLanguage,
-  initialCodeContent,
-  isCodeQuestion,
-} from './practiceFiles.js';
 import { PracticePanel } from './webview/panel.js';
 
 /** 1000ms debounce for lastPracticedAt updates. */
@@ -77,11 +72,7 @@ export class PracticeController {
     const question = bank.questions.find((q) => q.id === qid);
     if (!question) return;
 
-    if (isCodeQuestion(question)) {
-      await this.openCode(bankId, qid, question, learning);
-    } else {
-      await this.openQA(bankId, qid, question, learning);
-    }
+    await this.openMarkdown(bankId, qid, learning);
 
     // Show webview panel
     this.panel.createOrShow(bankId, qid, question, learning, vscode.ViewColumn.Two);
@@ -116,29 +107,9 @@ export class PracticeController {
     this.uriBindings.clear();
   }
 
-  private async openCode(
+  private async openMarkdown(
     bankId: string,
     qid: string,
-    question: import('../types/question.js').CodeQuestion,
-    learning: Map<string, import('../types/learning.js').LearningState>,
-  ): Promise<void> {
-    const ext = extForLanguage(question.language);
-    const saved = await this.storage.userData.readPracticeContent(bankId, qid, 'code', ext);
-    const init = initialCodeContent(question, saved);
-    const fileUri = await this.storage.userData.ensurePracticeFile(
-      bankId, qid, 'code', ext, init,
-    );
-
-    this.uriBindings.set(fileUri.toString(), { bankId, qid, learning });
-
-    const doc = await vscode.workspace.openTextDocument(fileUri);
-    await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
-  }
-
-  private async openQA(
-    bankId: string,
-    qid: string,
-    _question: import('../types/question.js').QAQuestion,
     learning: Map<string, import('../types/learning.js').LearningState>,
   ): Promise<void> {
     const fileUri = await this.storage.userData.ensurePracticeFile(

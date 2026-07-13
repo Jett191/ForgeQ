@@ -14,13 +14,12 @@
  * 实现要点（保持与 design.md 字面一致）：
  * - 顶层 `additionalProperties: false`：题库根对象不允许出现 schema 未定义
  *   的字段。
- * - `$defs.QuestionBase`：列出所有题型共享的必填字段（含 legacy `answer`），
- *   不限制额外字段——子类型字段经由 `unevaluatedProperties` 在 `Question`
- *   级别统一收口。
+ * - `$defs.QuestionBase`：列出所有题型共享的字段。代码题与问答题共用
+ *   Markdown 答案字段，`type` 只负责标识与筛选。
  * - `$defs.Question.allOf` 同时引用 `QuestionBase` 与 `oneOf` 子类型，再用
  *   `if/then/else` 强约束 `type === 'code'` / `type === 'qa'` 各自必须满足
- *   对应的 `*Extras`，最终 `unevaluatedProperties: false` 让按题型不允许
- *   的字段（例如 code 题里出现 `briefAnswer`）触发 oneOf / additional 错误，
+ *   对应的 `*Extras`，最终 `unevaluatedProperties: false` 让未知字段或把
+ *   历史代码专属字段写入 qa 题时触发 oneOf / additional 错误，
  *   被 Parser 映射为 `oneOf_mismatch` 或 `additionalProperties` 类违规。
  * - `Code/QAQuestionExtras` 内部包含 `type: { "const": ... }`，与 `if`
  *   分支配合即可在 oneOf 中精确路由。
@@ -79,6 +78,26 @@ export const questionBankSchema = {
         },
         difficulty: { type: 'string', enum: ['easy', 'medium', 'hard'] },
         answer: { type: 'string', maxLength: 50000 },
+        keywords: {
+          type: 'array',
+          maxItems: 50,
+          items: { type: 'string', minLength: 1, maxLength: 100 },
+        },
+        briefAnswer: { type: 'string', maxLength: 5000 },
+        detailedAnswer: { type: 'string', maxLength: 50000 },
+        followUps: {
+          type: 'array',
+          maxItems: 50,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['question'],
+            properties: {
+              question: { type: 'string', minLength: 1, maxLength: 1000 },
+              answer: { type: 'string', maxLength: 20000 },
+            },
+          },
+        },
       },
     },
     Question: {
@@ -130,26 +149,6 @@ export const questionBankSchema = {
       type: 'object',
       properties: {
         type: { const: 'qa' },
-        keywords: {
-          type: 'array',
-          maxItems: 50,
-          items: { type: 'string', minLength: 1, maxLength: 100 },
-        },
-        briefAnswer: { type: 'string', maxLength: 5000 },
-        detailedAnswer: { type: 'string', maxLength: 50000 },
-        followUps: {
-          type: 'array',
-          maxItems: 50,
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['question'],
-            properties: {
-              question: { type: 'string', minLength: 1, maxLength: 1000 },
-              answer: { type: 'string', maxLength: 20000 },
-            },
-          },
-        },
       },
     },
   },

@@ -8,7 +8,7 @@
 
 import type { LearningState } from '../../types/learning.js';
 import type { MasteryStatus, Question } from '../../types/question.js';
-import type { CodeAnswer, QAAnswer } from '../practiceFiles.js';
+import type { QuestionAnswer } from '../practiceFiles.js';
 
 /**
  * Host -> Webview 方向的消息联合。
@@ -33,11 +33,12 @@ export type HostToWebviewMessage =
   | { type: 'favoriteAck'; ok: boolean; reason?: string };
 
 /**
- * "查看答案" 的 payload，区分代码题与问答题。
+ * "查看答案" 的 payload。题型只用于标签，答案结构完全相同。
  */
-export type AnswerPayload =
-  | { questionType: 'code'; answer: CodeAnswer }
-  | { questionType: 'qa'; answer: QAAnswer };
+export type AnswerPayload = {
+  questionType: 'code' | 'qa';
+  answer: QuestionAnswer;
+};
 
 /**
  * Webview -> Host 方向的消息联合。

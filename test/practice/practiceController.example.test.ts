@@ -119,7 +119,7 @@ describe('PracticeController open(qid)', () => {
     mockPostMessage.mockClear();
   });
 
-  it('代码题: ensurePracticeFile + openTextDocument + showTextDocument(ViewColumn.One) + 创建 WebviewPanel', async () => {
+  it('代码题与问答题一样使用 Markdown 练习文件并创建 WebviewPanel', async () => {
     const ctx = harness.createExtensionContext();
     (ctx as any).extensionUri = HarnessUri.file('/ext');
     const storage = await Storage.create(ctx as any);
@@ -130,6 +130,7 @@ describe('PracticeController open(qid)', () => {
 
     // Reload state
     const state = await storage.bootstrap();
+    const ensurePracticeFile = vi.spyOn(storage.userData, 'ensurePracticeFile');
 
     const controller = new PracticeController(ctx as any, storage, state);
 
@@ -141,6 +142,13 @@ describe('PracticeController open(qid)', () => {
     // showTextDocument should have been called with ViewColumn.One
     expect(showTextDocumentCalls.length).toBe(1);
     expect(showTextDocumentCalls[0]).toHaveProperty('column', 1);
+    expect(ensurePracticeFile).toHaveBeenCalledWith(
+      state.currentBank!.bankId,
+      'q-code-1',
+      'qa',
+      '.md',
+      '',
+    );
 
     // WebviewPanel should have been created
     expect(createWebviewPanelCalls.length).toBe(1);

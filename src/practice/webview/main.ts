@@ -6,16 +6,14 @@
  * UI 结构（与 panel.ts 内嵌 HTML 同步）：
  *   - .q-head（meta 徽章 + 标题 + 收藏按钮）
  *   - #question-content.md（题面 markdown 渲染）
- *   - #test-cases（仅代码题）
  *   - .answer-toggle > #btn-show-answer（点击展开答案；展开后整体隐藏）
  *   - #answer-area（含 #btn-collapse-answer 圆形 ↑ 按钮 + #answer-content）
- *   - #follow-ups（问答题追问）
+ *   - #follow-ups（题目追问）
  *
  * 渲染策略：题面 / 详细解析 / 简答 / 追问答案均走 `renderMarkdown`，
- * 其余短字符串字段走 `escapeHtml`；代码题参考答案走 `highlight()` 着色。
+ * 其余短字符串字段走 `escapeHtml`。题型只改变徽章文字与筛选结果。
  */
 
-import { highlight } from './highlight.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
 
 declare function acquireVsCodeApi(): {
@@ -47,20 +45,11 @@ interface Question {
   category: string;
   tags: string[];
   difficulty: 'easy' | 'medium' | 'hard' | string;
-  language?: string;
   answer: string;
-  testCases?: Array<{
-    name?: string;
-    input?: string;
-    expected?: string;
-    description?: string;
-  }>;
   followUps?: Array<{ question: string; answer?: string }>;
 }
 
 const vscode = acquireVsCodeApi();
-
-let currentQuestion: Question | undefined;
 
 function $(id: string): HTMLElement | null {
   return document.getElementById(id);
@@ -162,8 +151,6 @@ function masteryIcon(m: string): string {
 }
 
 function renderQuestion(question: Question): void {
-  currentQuestion = question;
-
   const titleEl = $('question-title');
   if (titleEl) titleEl.textContent = question.title;
 
@@ -193,46 +180,12 @@ function renderQuestion(question: Question): void {
         }
       }
     }
-    if (question.type === 'code' && question.language) {
-      parts.push(`<span class="tag">${escapeHtml(question.language)}</span>`);
-    }
     metaEl.innerHTML = parts.join('');
   }
 
   // 题面：markdown 渲染
   const contentEl = $('question-content');
   if (contentEl) contentEl.innerHTML = renderMarkdown(question.content);
-
-  // 测试用例
-  const testCasesEl = $('test-cases');
-  if (testCasesEl) {
-    if (
-      question.type === 'code' &&
-      Array.isArray(question.testCases) &&
-      question.testCases.length > 0
-    ) {
-      let html = '<h2>测试用例</h2>';
-      for (const tc of question.testCases) {
-        html += '<div class="test-case">';
-        if (tc.name) {
-          html += `<div class="test-case-name">${escapeHtml(tc.name)}</div>`;
-        }
-        if (tc.input) {
-          html += `<div class="test-case-row"><span class="test-case-label">输入</span><code>${escapeHtml(tc.input)}</code></div>`;
-        }
-        if (tc.expected) {
-          html += `<div class="test-case-row"><span class="test-case-label">预期</span><code>${escapeHtml(tc.expected)}</code></div>`;
-        }
-        if (tc.description) {
-          html += `<div class="test-case-row"><span class="test-case-label">说明</span><span>${escapeHtml(tc.description)}</span></div>`;
-        }
-        html += '</div>';
-      }
-      testCasesEl.innerHTML = html;
-    } else {
-      testCasesEl.innerHTML = '';
-    }
-  }
 
   // 切题时重置答案区到未展开状态
   hideAnswerSection();
@@ -293,8 +246,7 @@ interface AnswerPayload {
   questionType: 'code' | 'qa';
   answer:
     | {
-        kind: 'reference';
-        code?: string;
+      kind: 'reference';
         briefAnswer?: string;
         detailedAnswer?: string;
         followUps?: Array<{ question: string; answer?: string }>;
@@ -316,30 +268,20 @@ function showAnswer(payload: AnswerPayload): void {
     )}</p>`;
   } else {
     let html = '<span class="answer-label">参考答案</span>';
-    if (payload.questionType === 'code') {
-      const lang =
-        currentQuestion && currentQuestion.type === 'code'
-          ? currentQuestion.language ?? ''
-          : '';
-      const langClass = lang ? ` class="lang-${escapeHtml(lang)}"` : '';
-      html += `<pre><code${langClass}>${highlight(ans.code ?? '', lang)}</code></pre>`;
-    } else {
-      if (ans.briefAnswer) {
-        html += `<div class="brief md">${renderMarkdown(ans.briefAnswer)}</div>`;
-      }
-      if (ans.detailedAnswer) {
-        html += `<div class="detailed md"><h3>详细解析</h3>${renderMarkdown(ans.detailedAnswer)}</div>`;
-      }
+    if (ans.briefAnswer) {
+      html += `<div class="brief md">${renderMarkdown(ans.briefAnswer)}</div>`;
+    }
+    if (ans.detailedAnswer) {
+      html += `<div class="detailed md"><h3>详细解析</h3>${renderMarkdown(ans.detailedAnswer)}</div>`;
     }
     content.innerHTML = html;
   }
 
-  // 追问（仅 QA 题且 reference）
+  // 追问（两种题型共用）
   const followUpsEl = $('follow-ups');
   if (followUpsEl) {
     if (
       ans.kind === 'reference' &&
-      payload.questionType === 'qa' &&
       Array.isArray(ans.followUps) &&
       ans.followUps.length > 0
     ) {

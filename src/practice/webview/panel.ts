@@ -15,12 +15,7 @@ import type { MasteryStatus, Question } from '../../types/question.js';
 import { deriveLearningState, toggleWrongFlag } from '../../domain/masteryRules.js';
 import { getOrDefault } from '../../storage/userDataStore.js';
 import type { InMemoryState, Storage } from '../../storage/storage.js';
-import {
-  deriveCodeAnswer,
-  deriveQAAnswer,
-  extForLanguage,
-  isCodeQuestion,
-} from '../practiceFiles.js';
+import { deriveQuestionAnswer } from '../practiceFiles.js';
 import type {
   AnswerPayload,
   HostToWebviewMessage,
@@ -145,8 +140,6 @@ export class PracticePanel {
 
     <article id="question-content" class="md"></article>
 
-    <section id="test-cases" class="test-cases"></section>
-
     <div id="answer-toggle" class="answer-toggle">
       <button id="btn-show-answer" class="btn primary" type="button">查看答案</button>
       <div id="mastery-fab" class="mastery-fab">
@@ -270,12 +263,10 @@ export class PracticePanel {
       }
 
       case 'requestAnswer': {
-        let payload: AnswerPayload;
-        if (isCodeQuestion(question)) {
-          payload = { questionType: 'code', answer: deriveCodeAnswer(question) };
-        } else {
-          payload = { questionType: 'qa', answer: deriveQAAnswer(question) };
-        }
+        const payload: AnswerPayload = {
+          questionType: question.type,
+          answer: deriveQuestionAnswer(question),
+        };
         this.postMessage(bankId, qid, { type: 'showAnswer', payload });
         break;
       }
@@ -360,12 +351,7 @@ export class PracticePanel {
         const target = msg.target;
         let fileUri: vscode.Uri | undefined;
 
-        if (target === 'code' && isCodeQuestion(question)) {
-          const ext = extForLanguage(question.language);
-          fileUri = await storage.userData.ensurePracticeFile(
-            bankId, qid, 'code', ext, '',
-          );
-        } else if (target === 'qa') {
+        if (target === 'code' || target === 'qa') {
           fileUri = await storage.userData.ensurePracticeFile(
             bankId, qid, 'qa', '.md', '',
           );

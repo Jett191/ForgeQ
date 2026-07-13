@@ -6,11 +6,11 @@
  * 任何变更必须先回写到 design.md 后再同步本文件。
  *
  * 设计要点：
- * - `Question` 是按 `type` 区分的 discriminated union（`'code' | 'qa'`）。
+ * - `Question` 仍用 `type` 区分 `'code' | 'qa'`，但题型只用于标识与筛选。
  * - `QuestionBase` 保留 legacy 字段 `answer: string`，用于向后兼容
  *   Req 1.1（已批准）所要求的 `answer` 必填语义；新模型在此基础上扩展。
- * - 子类型字段（`referenceCode` / `briefAnswer` 等）作为可选补充字段；
- *   `Parser` 在解析后会用 legacy `answer` 兜底缺失的 `referenceCode` / `briefAnswer`。
+ * - 两种题型共享同一套 Markdown 答案字段与展示流程。
+ * - 历史代码题字段继续作为可选兼容字段保留，但不再决定练习页面行为。
  *
  * Validates: Requirements 1.1, 9.1, 8.1
  */
@@ -65,12 +65,25 @@ export interface QuestionBase {
    * 新模型保留以保证 round-trip 与历史 JSON 兼容。
    */
   answer: string;
+  /** 关键词集合（用于答题点检查 / 提示）。 */
+  keywords?: string[];
+  /** 简洁答案；缺省时由 Parser 用 legacy `answer` 兜底。 */
+  briefAnswer?: string;
+  /** 详细答案 markdown。 */
+  detailedAnswer?: string;
+  /** 追问及其答案。 */
+  followUps?: Array<{
+    question: string;
+    /** markdown。 */
+    answer?: string;
+  }>;
 }
 
 /**
  * 代码题：`type === 'code'`。
  *
- * 子类型字段全部可选；`referenceCode` 缺省时由 Parser 用 legacy `answer` 兜底。
+ * `type` 只用于题型标签与筛选；题面、练习文件和答案展示与问答题相同。
+ * 下列代码专属字段仅用于兼容已有题库，不再参与页面路由。
  */
 export interface CodeQuestion extends QuestionBase {
   type: 'code';
@@ -96,23 +109,9 @@ export interface CodeQuestion extends QuestionBase {
 
 /**
  * 问答题：`type === 'qa'`。
- *
- * 子类型字段全部可选；`briefAnswer` 缺省时由 Parser 用 legacy `answer` 兜底。
  */
 export interface QAQuestion extends QuestionBase {
   type: 'qa';
-  /** 关键词集合（用于答题点检查 / 提示）。 */
-  keywords?: string[];
-  /** 简洁答案；缺省时由 Parser 用 legacy `answer` 兜底。 */
-  briefAnswer?: string;
-  /** 详细答案 markdown。 */
-  detailedAnswer?: string;
-  /** 追问及其答案。 */
-  followUps?: Array<{
-    question: string;
-    /** markdown。 */
-    answer?: string;
-  }>;
 }
 
 /**

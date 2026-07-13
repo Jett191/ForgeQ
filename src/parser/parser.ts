@@ -20,12 +20,8 @@
  * 4. 在 schema 通过后做 id 区分大小写精确去重；任意 id 出现 ≥ 2 次时返回
  *    `DUPLICATE_QUESTION_ID`，列出每个重复 id 在 `questions` 数组中的全部
  *    0 起始下标（Req 1.7）。
- * 5. 通过校验 + 去重的 bank 进入 legacy 兜底后处理：
- *    - `type === 'code'` 且 `referenceCode` 缺失而 `answer` 非空时，把
- *      `answer` 同时映射为 `referenceCode`（design.md "Parser 在校验通过
- *      后做以下后处理" 第 2 条）。
- *    - `type === 'qa'` 且 `briefAnswer` 缺失而 `answer` 非空时，把
- *      `answer` 同时映射为 `briefAnswer`（同上第 3 条）。
+ * 5. 通过校验 + 去重的 bank 进入 legacy 兜底后处理：两种题型在
+ *    `briefAnswer` 缺失且 `answer` 非空时，都用 `answer` 作为简洁答案。
  *
  * ## 设计取舍
  *
@@ -55,12 +51,7 @@
 
 import Ajv2020, { type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 
-import type {
-  CodeQuestion,
-  QAQuestion,
-  Question,
-  QuestionBank,
-} from '../types/question.js';
+import type { Question, QuestionBank } from '../types/question.js';
 import type {
   ParseError,
   Result,
@@ -782,18 +773,10 @@ function findDuplicateIds(questions: readonly Question[]): ParseError | null {
 // ---------------------------------------------------------------------------
 
 /**
- * 通过 schema 校验 + 去重后的题库二次加工：把 legacy `answer` 兜底映射到
- * 子类型字段。
+ * 通过 schema 校验 + 去重后的题库二次加工：两种题型统一把 legacy
+ * `answer` 兜底映射到 `briefAnswer`。
  *
- * - `type === 'code'` 且未显式给出 `referenceCode` 而 `answer` 非空字符串
- *   时，把 `answer` 同步写入 `referenceCode`。
- * - `type === 'qa'` 且未显式给出 `briefAnswer` 而 `answer` 非空字符串时，
- *   把 `answer` 同步写入 `briefAnswer`。
- *
- * 这保证：① 老题库的 `answer` 字段在新 UI 中能直接以"参考代码 / 简洁答案"
- * 的语义渲染；② Formatter 的输出再经过 Parser 一次时（round-trip）会得到
- * 完全相等的 bank（因为 `referenceCode` / `briefAnswer` 已显式存在，二次
- * 解析不再触发兜底改值）。
+ * 这保证老题库无需增加新字段，也能在统一的 Markdown 答案区域展示。
  *
  * `answer` 为空字符串时不做兜底——空字符串没有展示价值，留给 UI 退化为
  * "暂无参考答案"文案（Req 5.9 / 6.6）。
@@ -802,12 +785,7 @@ function findDuplicateIds(questions: readonly Question[]): ParseError | null {
  * 不变性追踪。
  */
 function postProcess(bank: QuestionBank): QuestionBank {
-  const questions = bank.questions.map((q) => {
-    if (q.type === 'code') {
-      return postProcessCode(q);
-    }
-    return postProcessQA(q);
-  });
+  const questions = bank.questions.map(postProcessAnswer);
   return {
     name: bank.name,
     version: bank.version,
@@ -815,14 +793,7 @@ function postProcess(bank: QuestionBank): QuestionBank {
   };
 }
 
-function postProcessCode(q: CodeQuestion): CodeQuestion {
-  if (q.referenceCode === undefined && q.answer !== '') {
-    return { ...q, referenceCode: q.answer };
-  }
-  return q;
-}
-
-function postProcessQA(q: QAQuestion): QAQuestion {
+function postProcessAnswer(q: Question): Question {
   if (q.briefAnswer === undefined && q.answer !== '') {
     return { ...q, briefAnswer: q.answer };
   }
