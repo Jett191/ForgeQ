@@ -124,6 +124,8 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
           arguments: [q.id],
         };
 
+        item.contextValue = 'question';
+
         return item;
       }
       case 'message': {

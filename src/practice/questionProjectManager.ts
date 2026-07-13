@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 
 import type { Storage } from '../storage/storage.js';
+import type { QuestionProjectFile } from '../storage/userDataStore.js';
 import type { Question } from '../types/question.js';
 
 interface ProjectPickItem extends vscode.QuickPickItem {
@@ -26,6 +27,11 @@ export interface QuestionProjectManagerOptions {
   onFileOpened?: (uri: vscode.Uri, bankId: string, qid: string) => void;
 }
 
+export interface QuestionProjectOpenOptions {
+  /** Existing answers open immediately; project-toolbar actions can still request the full menu. */
+  directIfExists?: boolean;
+}
+
 const PRESET_FILES: ReadonlyArray<{ label: string; description: string; fileName: string }> = [
   { label: '$(file-code) JavaScript 文件', description: '创建 index.js', fileName: 'index.js' },
   { label: '$(file-code) JSX 文件', description: '创建 App.jsx', fileName: 'App.jsx' },
@@ -43,7 +49,10 @@ export class QuestionProjectManager {
     private readonly options: QuestionProjectManagerOptions = {},
   ) {}
 
-  async open(context: QuestionProjectContext): Promise<void> {
+  async open(
+    context: QuestionProjectContext,
+    openOptions: QuestionProjectOpenOptions = {},
+  ): Promise<void> {
     const { bankId, question } = context;
     const qid = question.id;
     const root = await this.storage.userData.ensureQuestionProject(bankId, qid);
@@ -57,6 +66,11 @@ export class QuestionProjectManager {
     const files = await this.storage.userData.listQuestionProjectFiles(bankId, qid);
     if (files.length === 0) {
       await this.initialiseProject(root, context);
+      return;
+    }
+
+    if (openOptions.directIfExists) {
+      await this.openFile(this.primaryAnswerFile(files).uri, bankId, qid);
       return;
     }
 
@@ -97,6 +111,18 @@ export class QuestionProjectManager {
         await vscode.commands.executeCommand('vscode.openFolder', root, true);
         return;
     }
+  }
+
+  /** Pick a stable primary answer when a project contains more than one file. */
+  private primaryAnswerFile(files: ReadonlyArray<QuestionProjectFile>): QuestionProjectFile {
+    const preferredNames = ['index.js', 'answer.md', 'index.ts', 'App.jsx', 'App.tsx'];
+    for (const name of preferredNames) {
+      const match = files.find(
+        (file) => file.relativePath === name || file.relativePath.endsWith(`/${name}`),
+      );
+      if (match) return match;
+    }
+    return files[0]!;
   }
 
   private async initialiseProject(

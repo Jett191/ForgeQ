@@ -28,6 +28,7 @@
     "onView:frontendInterview.review",
     "onCommand:frontendInterview.import",
     "onCommand:frontendInterview.openQuestion",
+    "onCommand:frontendInterview.deleteAnswer",
     "onCommand:frontendInterview.switchBank",
     "onCommand:frontendInterview.removeBank",
     "onCommand:frontendInterview.review.unmastered",
@@ -74,6 +75,12 @@
         "command": "frontendInterview.openQuestion",
         "title": "Open Question",
         "category": "Frontend Interview"
+      },
+      {
+        "command": "frontendInterview.deleteAnswer",
+        "title": "删除我的答案",
+        "category": "Frontend Interview",
+        "icon": "$(trash)"
       },
       {
         "command": "frontendInterview.switchBank",
@@ -146,6 +153,10 @@
           "when": "false"
         },
         {
+          "command": "frontendInterview.deleteAnswer",
+          "when": "false"
+        },
+        {
           "command": "frontendInterview.switchBank"
         },
         {
@@ -174,6 +185,18 @@
         },
         {
           "command": "frontendInterview.toggleGroupByCategory"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "frontendInterview.deleteAnswer",
+          "when": "view == frontendInterview.questionList && viewItem == question",
+          "group": "1_answer@1"
+        },
+        {
+          "command": "frontendInterview.deleteAnswer",
+          "when": "view == frontendInterview.review && viewItem == question",
+          "group": "1_answer@1"
         }
       ],
       "view/title": [

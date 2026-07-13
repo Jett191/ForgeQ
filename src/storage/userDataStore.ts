@@ -488,6 +488,33 @@ export class UserDataStore {
   }
 
   /**
+   * 删除一道题的全部作答文件。
+   *
+   * 同时覆盖新版 `projects/<qid>/` 整目录与旧版 `qa/`、`code/` 单文件布局；
+   * 笔记位于独立的 `notes/` 目录，不属于答案，因此不会被删除。
+   *
+   * @returns 删除前是否至少存在一个答案文件或项目目录。
+   */
+  async deleteQuestionAnswers(bankId: string, qid: string): Promise<boolean> {
+    const candidates = [
+      this.questionProjectUri(bankId, qid),
+      this.practiceFileUri(bankId, qid, 'qa', '.md'),
+      ...['.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.txt'].map((extension) =>
+        this.practiceFileUri(bankId, qid, 'code', extension),
+      ),
+    ];
+    let found = false;
+
+    for (const uri of candidates) {
+      if (!(await this.fileExists(uri))) continue;
+      found = true;
+      await safeDelete(uri);
+    }
+
+    return found;
+  }
+
+  /**
    * 读取 `<baseUri>/<bankId>/notes/<qid>.md` 的内容。
    * 文件不存在 → `undefined`；存在 → 文件文本（可能是空字符串，但通常不会出现，
    * 因为清空笔记走的是删除路径，参见 {@link writeNote}）。

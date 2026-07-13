@@ -4,7 +4,7 @@
  * 在 webview iframe 内运行，通过 `acquireVsCodeApi()` 与扩展进程通信。
  *
  * UI 结构（与 panel.ts 内嵌 HTML 同步）：
- *   - .q-head（meta 徽章 + 标题 + 收藏按钮）
+ *   - .q-head（meta 徽章 + 标题 + 项目 / 分享 / 收藏操作）
  *   - #question-content.md（题面 markdown 渲染）
  *   - .answer-toggle > #btn-show-answer（点击展开答案；展开后整体隐藏）
  *   - #answer-area（含 #btn-collapse-answer 圆形 ↑ 按钮 + #answer-content）

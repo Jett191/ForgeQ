@@ -15,10 +15,14 @@ const mockPostMessage = vi.fn();
 const changeTextDocumentHandlers: Array<(event: { document: { uri: unknown } }) => void> = [];
 const webviewMessageHandlers: Array<(message: unknown) => Promise<void>> = [];
 
-const { harness } = vi.hoisted(() => {
+const { harness, showInformationMessage, showErrorMessage } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require('../harness/memFsHarness.ts') as typeof import('../harness/memFsHarness.js');
-  return { harness: mod.createMemFsHarness() };
+  return {
+    harness: mod.createMemFsHarness(),
+    showInformationMessage: vi.fn(async () => undefined),
+    showErrorMessage: vi.fn(async () => undefined),
+  };
 });
 
 vi.mock('vscode', () => {
@@ -35,6 +39,9 @@ vi.mock('vscode', () => {
         items.find((item) => item.action === 'file'),
       showInputBox: async () => undefined,
       showSaveDialog: async () => HarnessUri.file('/exports/shared-question.md'),
+      showInformationMessage,
+      showErrorMessage,
+      tabGroups: { all: [], close: vi.fn(async () => true) },
       createTerminal: vi.fn(() => ({ show: vi.fn(), dispose: vi.fn() })),
       showTextDocument: async (doc: unknown, column?: unknown) => {
         layoutCallOrder.push('answer');
@@ -73,6 +80,8 @@ vi.mock('vscode', () => {
         changeTextDocumentHandlers.push(handler);
         return { dispose: vi.fn() };
       }),
+      workspaceFolders: [],
+      updateWorkspaceFolders: vi.fn(() => true),
     },
     commands: {
       executeCommand: vi.fn(),
@@ -128,6 +137,8 @@ describe('PracticeController open(qid)', () => {
     changeTextDocumentHandlers.length = 0;
     webviewMessageHandlers.length = 0;
     mockPostMessage.mockClear();
+    showInformationMessage.mockClear();
+    showErrorMessage.mockClear();
   });
 
   it('代码题首次打开时创建单题项目文件并创建 WebviewPanel', async () => {
@@ -247,6 +258,28 @@ describe('PracticeController open(qid)', () => {
     expect(showTextDocumentCalls.length).toBe(0);
     expect(createWebviewPanelCalls.length).toBe(0);
 
+    controller.dispose();
+  });
+
+  it('删除答案会一次清理单文件或整个项目目录', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    const bankId = state.currentBank!.bankId;
+    await storage.userData.ensureQuestionProjectFile(bankId, 'q-code-1', 'index.js', 'answer');
+    await storage.userData.ensureQuestionProjectFile(bankId, 'q-code-1', 'src/helper.js', 'helper');
+    const controller = new PracticeController(ctx as any, storage, state);
+
+    await controller.deleteAnswer('q-code-1');
+
+    expect(await storage.userData.listQuestionProjectFiles(bankId, 'q-code-1')).toEqual([]);
+    expect(showInformationMessage).toHaveBeenCalledWith(
+      '已删除“Implement sum”的全部答案文件',
+    );
+    expect(showErrorMessage).not.toHaveBeenCalled();
     controller.dispose();
   });
 

@@ -144,6 +144,30 @@ describe('QuestionProjectManager example', () => {
     );
   });
 
+  it('从题目列表打开已有作答时跳过选项并直接打开主要回答文件', async () => {
+    const storage = createStorage([
+      { relativePath: 'notes.txt', uri: fileUri('notes.txt') },
+      { relativePath: 'index.js', uri: fileUri('index.js') },
+    ]);
+    const onFileOpened = vi.fn();
+    const manager = new QuestionProjectManager(storage as never, { onFileOpened });
+
+    await manager.open(
+      { bankId: 'bank-1', question },
+      { directIfExists: true },
+    );
+
+    expect(mocks.showQuickPick).not.toHaveBeenCalled();
+    expect(mocks.openTextDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/projects/q1/index.js' }),
+    );
+    expect(onFileOpened).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/projects/q1/index.js' }),
+      'bank-1',
+      'q1',
+    );
+  });
+
   it('旧 Markdown 有内容时复制到 answer.md，不删除或覆盖旧文件', async () => {
     const storage = createStorage();
     storage.userData.readPracticeContent.mockResolvedValue('# 我的旧答案');
