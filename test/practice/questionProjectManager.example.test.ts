@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   openTextDocument: vi.fn(async (uri: unknown) => ({ uri })),
   showTextDocument: vi.fn(async () => ({})),
   executeCommand: vi.fn(async () => undefined),
+  updateWorkspaceFolders: vi.fn(() => true),
+  showWarningMessage: vi.fn(async () => undefined),
   createTerminal: vi.fn(() => ({ show: vi.fn() })),
 }));
 
@@ -15,10 +17,15 @@ vi.mock('vscode', () => ({
     showQuickPick: mocks.showQuickPick,
     showInputBox: mocks.showInputBox,
     showTextDocument: mocks.showTextDocument,
+    showWarningMessage: mocks.showWarningMessage,
     executeCommand: mocks.executeCommand,
     createTerminal: mocks.createTerminal,
   },
-  workspace: { openTextDocument: mocks.openTextDocument },
+  workspace: {
+    openTextDocument: mocks.openTextDocument,
+    workspaceFolders: [],
+    updateWorkspaceFolders: mocks.updateWorkspaceFolders,
+  },
   commands: { executeCommand: mocks.executeCommand },
 }));
 
@@ -84,6 +91,38 @@ describe('QuestionProjectManager example', () => {
       preview: false,
       preserveFocus: false,
     });
+  });
+
+  it('选择空项目文件夹时在当前窗口创建并打开默认 index.js', async () => {
+    const storage = createStorage();
+    mocks.showQuickPick.mockImplementation(async (items: Array<{ action: string }>) =>
+      items.find((item) => item.action === 'empty'),
+    );
+    const onFileOpened = vi.fn();
+    const manager = new QuestionProjectManager(storage as never, { onFileOpened });
+
+    await manager.open({ bankId: 'bank-1', question });
+
+    expect(storage.userData.ensureQuestionProjectFile).toHaveBeenCalledWith(
+      'bank-1',
+      'q1',
+      'index.js',
+    );
+    expect(mocks.updateWorkspaceFolders).toHaveBeenCalledWith(0, 0, {
+      uri: root,
+      name: '练习：模块练习',
+    });
+    expect(mocks.executeCommand).not.toHaveBeenCalledWith(
+      'vscode.openFolder',
+      expect.anything(),
+      true,
+    );
+    expect(mocks.showTextDocument).toHaveBeenCalledWith(expect.anything(), {
+      viewColumn: 1,
+      preview: false,
+      preserveFocus: false,
+    });
+    expect(onFileOpened).toHaveBeenCalledWith(expect.anything(), 'bank-1', 'q1');
   });
 
   it('已有项目可继续创建嵌套文件', async () => {

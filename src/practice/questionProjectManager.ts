@@ -112,7 +112,11 @@ export class QuestionProjectManager {
     const items: InitialPickItem[] = [
       ...presets,
       { label: '$(new-file) 自定义文件名', description: '例如 src/components/App.jsx', action: 'custom' },
-      { label: '$(folder) 空项目文件夹', description: '在新窗口中自行创建文件', action: 'empty' },
+      {
+        label: '$(folder) 空项目文件夹',
+        description: '在当前窗口创建并打开默认 index.js',
+        action: 'empty',
+      },
     ];
 
     const picked = await vscode.window.showQuickPick(items, {
@@ -121,7 +125,13 @@ export class QuestionProjectManager {
     if (!picked) return;
 
     if (picked.action === 'empty') {
-      await vscode.commands.executeCommand('vscode.openFolder', root, true);
+      const uri = await this.storage.userData.ensureQuestionProjectFile(
+        context.bankId,
+        context.question.id,
+        'index.js',
+      );
+      await this.openFile(uri, context.bankId, context.question.id);
+      this.addProjectToWorkspace(root, context.question);
       return;
     }
     if (picked.action === 'custom') {
@@ -135,6 +145,21 @@ export class QuestionProjectManager {
         picked.fileName,
       );
       await this.openFile(uri, context.bankId, context.question.id);
+    }
+  }
+
+  /** Add the per-question project as a root so VS Code Explorer can display its directory tree. */
+  private addProjectToWorkspace(root: vscode.Uri, question: Question): void {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const alreadyAdded = folders.some((folder) => folder.uri.toString() === root.toString());
+    if (alreadyAdded) return;
+
+    const added = vscode.workspace.updateWorkspaceFolders(folders.length, 0, {
+      uri: root,
+      name: `练习：${question.shortTitle ?? question.title}`,
+    });
+    if (!added) {
+      void vscode.window.showWarningMessage('无法把题目项目添加到当前工作区，请稍后重试。');
     }
   }
 
