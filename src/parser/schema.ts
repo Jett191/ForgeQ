@@ -35,7 +35,7 @@
  */
 export const questionBankSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://kiro.dev/schemas/frontend-interview-practice/question-bank.json',
+  $id: 'https://raw.githubusercontent.com/Jett191/practice-code/main/schemas/question-bank.schema.json',
   title: 'QuestionBank',
   type: 'object',
   additionalProperties: false,

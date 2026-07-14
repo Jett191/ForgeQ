@@ -1,0 +1,12 @@
+.DS_Store
+.gitignore
+.kiro/**
+.vscode/**
+node_modules/**
+scripts/**
+src/**
+test/**
+*.vsix
+**/*.map
+tsconfig*.json
+vitest.config.ts

@@ -1,11 +1,19 @@
 {
-  "name": "frontend-interview-practice",
-  "displayName": "Frontend Interview Practice",
-  "description": "在 VS Code 内完成前端面试题的导入、浏览、刷题与复习",
+  "name": "forgeq",
+  "displayName": "ForgeQ",
+  "description": "在 VS Code 里导入、练习和复习自己的题库",
   "version": "0.0.1",
   "publisher": "frontend-interview-practice",
   "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Jett191/practice-code.git"
+  },
+  "homepage": "https://github.com/Jett191/practice-code#readme",
+  "bugs": {
+    "url": "https://github.com/Jett191/practice-code/issues"
+  },
   "engines": {
     "vscode": "^1.90.0",
     "node": ">=18"
@@ -15,7 +23,9 @@
     "Other"
   ],
   "keywords": [
-    "frontend",
+    "study",
+    "quiz",
+    "question-bank",
     "interview",
     "practice",
     "questions",
@@ -45,7 +55,7 @@
       "activitybar": [
         {
           "id": "frontendInterview",
-          "title": "Frontend Interview",
+          "title": "ForgeQ",
           "icon": "media/icon.svg"
         }
       ]
@@ -54,92 +64,92 @@
       "frontendInterview": [
         {
           "id": "frontendInterview.questionList",
-          "name": "Questions",
-          "contextualTitle": "Frontend Interview"
+          "name": "题目",
+          "contextualTitle": "ForgeQ"
         },
         {
           "id": "frontendInterview.review",
-          "name": "Review",
-          "contextualTitle": "Frontend Interview"
+          "name": "复习",
+          "contextualTitle": "ForgeQ"
         }
       ]
     },
     "commands": [
       {
         "command": "frontendInterview.import",
-        "title": "Import Question Bank",
-        "category": "Frontend Interview",
+        "title": "导入题库",
+        "category": "ForgeQ",
         "icon": "$(cloud-upload)"
       },
       {
         "command": "frontendInterview.openQuestion",
-        "title": "Open Question",
-        "category": "Frontend Interview"
+        "title": "打开题目",
+        "category": "ForgeQ"
       },
       {
         "command": "frontendInterview.deleteAnswer",
         "title": "删除我的答案",
-        "category": "Frontend Interview",
+        "category": "ForgeQ",
         "icon": "$(trash)"
       },
       {
         "command": "frontendInterview.switchBank",
-        "title": "Switch Question Bank",
-        "category": "Frontend Interview",
+        "title": "切换题库",
+        "category": "ForgeQ",
         "icon": "$(repo)"
       },
       {
         "command": "frontendInterview.removeBank",
-        "title": "Remove Question Bank",
-        "category": "Frontend Interview",
+        "title": "移除题库",
+        "category": "ForgeQ",
         "icon": "$(trash)"
       },
       {
         "command": "frontendInterview.review.unmastered",
-        "title": "Review: Unmastered",
-        "category": "Frontend Interview",
+        "title": "复习未掌握",
+        "category": "ForgeQ",
         "icon": "$(question)"
       },
       {
         "command": "frontendInterview.review.favorite",
-        "title": "Review: Favorites",
-        "category": "Frontend Interview",
+        "title": "复习收藏",
+        "category": "ForgeQ",
         "icon": "$(star-full)"
       },
       {
         "command": "frontendInterview.review.wrong",
-        "title": "Review: Wrong Answers",
-        "category": "Frontend Interview",
+        "title": "复习错题",
+        "category": "ForgeQ",
         "icon": "$(error)"
       },
       {
         "command": "frontendInterview.filter.byType",
         "title": "筛选: 题型",
-        "category": "Frontend Interview",
+        "category": "ForgeQ",
         "icon": "$(symbol-class)"
       },
       {
         "command": "frontendInterview.filter.byCategory",
         "title": "筛选: 分类",
-        "category": "Frontend Interview",
+        "category": "ForgeQ",
         "icon": "$(folder-opened)"
       },
       {
         "command": "frontendInterview.filter.byDifficulty",
         "title": "筛选: 难度",
-        "category": "Frontend Interview",
+        "category": "ForgeQ",
         "icon": "$(flame)"
       },
       {
         "command": "frontendInterview.filter.clear",
         "title": "清除筛选",
-        "category": "Frontend Interview",
+        "category": "ForgeQ",
         "icon": "$(clear-all)"
       },
       {
         "command": "frontendInterview.toggleGroupByCategory",
         "title": "切换分类分组",
-        "category": "Frontend Interview",
+        "category": "ForgeQ",
         "icon": "$(group-by-ref-type)"
       }
     ],
