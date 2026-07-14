@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kiro.dev/schemas/frontend-interview-practice/question-bank.json",
+  "$id": "https://raw.githubusercontent.com/Jett191/practice-code/main/schemas/question-bank.schema.json",
   "title": "QuestionBank",
   "type": "object",
   "additionalProperties": false,
@@ -60,6 +60,11 @@
           "minLength": 1,
           "maxLength": 200
         },
+        "shortTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
         "content": {
           "type": "string",
           "maxLength": 20000
@@ -90,6 +95,45 @@
         "answer": {
           "type": "string",
           "maxLength": 50000
+        },
+        "keywords": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "briefAnswer": {
+          "type": "string",
+          "maxLength": 5000
+        },
+        "detailedAnswer": {
+          "type": "string",
+          "maxLength": 50000
+        },
+        "followUps": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "question"
+            ],
+            "properties": {
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "answer": {
+                "type": "string",
+                "maxLength": 20000
+              }
+            }
+          }
         }
       }
     },
@@ -195,45 +239,6 @@
       "properties": {
         "type": {
           "const": "qa"
-        },
-        "keywords": {
-          "type": "array",
-          "maxItems": 50,
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          }
-        },
-        "briefAnswer": {
-          "type": "string",
-          "maxLength": 5000
-        },
-        "detailedAnswer": {
-          "type": "string",
-          "maxLength": 50000
-        },
-        "followUps": {
-          "type": "array",
-          "maxItems": 50,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "question"
-            ],
-            "properties": {
-              "question": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1000
-              },
-              "answer": {
-                "type": "string",
-                "maxLength": 20000
-              }
-            }
-          }
         }
       }
     }

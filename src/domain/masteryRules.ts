@@ -14,9 +14,8 @@
  *
  * 状态机不变量（对应 design.md Property 8，Validates Req 9.3 / 9.4）：
  * 1. `mastery === next`
- * 2. 若 `next === 'not_mastered'`，则 `wrongFlag === true`
- * 3. 若 `next === 'mastered'`，则 `wrongFlag === false`
- * 4. 若 `next ∈ {'unlearned', 'learning'}`，则 `wrongFlag === prev.wrongFlag`
+ * 2. 若 `next === 'mastered'`，则 `wrongFlag === false`
+ * 3. 其它状态不改变 `wrongFlag`；错题由独立操作切换
  * 5. 其它字段（`favoriteFlag` / `hasNote` / `lastPracticedAt`）保持不变
  *
  * Validates: Requirements 9.1, 9.2, 9.3, 9.4
@@ -30,9 +29,8 @@ import type { MasteryStatus } from '../types/question.js';
  * `LearningState`。
  *
  * 行为定义（与 design.md MasteryRules 实现完全一致）：
- * - `next === 'not_mastered'`：`wrongFlag` 置为 `true`（Req 9.3）。
  * - `next === 'mastered'`：`wrongFlag` 置为 `false`（Req 9.4）。
- * - `next === 'unlearned' | 'learning'`：保持 `prev.wrongFlag` 不变。
+ * - 其它状态：保持 `prev.wrongFlag` 不变。
  * - `mastery` 永远等于 `next`（Req 9.2）。
  * - 其余字段（`favoriteFlag` / `hasNote` / `lastPracticedAt`）整体透传。
  *
@@ -46,8 +44,11 @@ export function deriveLearningState(
   prev: LearningState,
   next: MasteryStatus,
 ): LearningState {
-  let wrongFlag = prev.wrongFlag;
-  if (next === 'not_mastered') wrongFlag = true; // Req 9.3
-  if (next === 'mastered') wrongFlag = false; // Req 9.4
+  const wrongFlag = next === 'mastered' ? false : prev.wrongFlag;
   return { ...prev, mastery: next, wrongFlag };
+}
+
+/** Toggle the independent wrong-question marker without changing mastery. */
+export function toggleWrongFlag(prev: LearningState): LearningState {
+  return { ...prev, wrongFlag: !prev.wrongFlag };
 }

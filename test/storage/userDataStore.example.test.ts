@@ -202,4 +202,51 @@ describe('UserDataStore (example)', () => {
       hasNote: false,
     });
   });
+
+  it('单题项目支持嵌套多文件，重复确保时不覆盖已有内容', async () => {
+    const store = new UserDataStore(harness.globalStorageUri, { debounceMs: 0 });
+    const qid = '../question/with/slash';
+
+    const appUri = await store.ensureQuestionProjectFile(
+      BANK_ID,
+      qid,
+      'src/App.jsx',
+      'export default function App() {}',
+    );
+    await store.ensureQuestionProjectFile(
+      BANK_ID,
+      qid,
+      'src/utils.js',
+      'export const value = 1;',
+    );
+
+    // 第二次 ensure 不能覆盖用户已写入的答案。
+    await store.ensureQuestionProjectFile(BANK_ID, qid, 'src/App.jsx', 'overwritten');
+
+    const files = await store.listQuestionProjectFiles(BANK_ID, qid);
+    expect(files.map((file) => file.relativePath)).toEqual(['src/App.jsx', 'src/utils.js']);
+    expect(new TextDecoder().decode(await harness.workspaceFs.readFile(appUri))).toBe(
+      'export default function App() {}',
+    );
+
+    // qid 被编码成单一目录段，不能通过 ../ 或 / 逃逸出 projects 目录。
+    expect(appUri.fsPath).toContain('/projects/%2E%2E%2Fquestion%2Fwith%2Fslash/');
+  });
+
+  it('删除答案同时清理单题项目与旧版单文件，但保留笔记', async () => {
+    const store = new UserDataStore(harness.globalStorageUri, { debounceMs: 0 });
+    const qid = 'q-delete';
+    await store.ensureQuestionProjectFile(BANK_ID, qid, 'index.js', 'const answer = 1;');
+    await store.ensureQuestionProjectFile(BANK_ID, qid, 'src/helper.js', 'export {};');
+    await store.ensurePracticeFile(BANK_ID, qid, 'qa', '.md', '旧版问答');
+    await store.ensurePracticeFile(BANK_ID, qid, 'code', '.js', '旧版代码');
+    await store.writeNote(BANK_ID, qid, '这条笔记需要保留');
+
+    expect(await store.deleteQuestionAnswers(BANK_ID, qid)).toBe(true);
+
+    expect(await store.listQuestionProjectFiles(BANK_ID, qid)).toEqual([]);
+    expect(await store.readPracticeContent(BANK_ID, qid, 'qa', '.md')).toBeUndefined();
+    expect(await store.readPracticeContent(BANK_ID, qid, 'code', '.js')).toBeUndefined();
+    expect(await store.readNote(BANK_ID, qid)).toBe('这条笔记需要保留');
+  });
 });

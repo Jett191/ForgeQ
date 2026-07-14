@@ -4,7 +4,8 @@
  * 该模块严格对齐 design.md 中
  * "Components and Interfaces > ReviewSetBuilder" 一节，且与
  * requirements.md 中以下条款一一对应：
- * - Req 10.2：`复习未掌握` 入口仅包含 `mastery === 'not_mastered'` 的题目。
+ * - Req 10.2：`复习未掌握` 入口仅包含 `mastery === 'not_mastered'` 且未标记
+ *   为错题的题目。
  * - Req 10.3：`复习收藏` 入口仅包含 `favoriteFlag === true` 的题目。
  * - Req 10.4：`复习错题` 入口仅包含 `wrongFlag === true` 的题目。
  *
@@ -37,9 +38,12 @@ type LearningPredicate = (state: LearningState | undefined) => boolean;
  *
  * 注意：所有谓词在 `state === undefined` 时返回 `false`，等价于把缺省的
  * `LearningState` 视为默认值（mastery=unlearned、所有 flag 为 false）。
+ * `unmastered` 明确排除 `wrongFlag=true`，保证未掌握与错题两个集合互斥；
+ * 错题标记具有更高的归类优先级。
  */
 const PREDICATES: Readonly<Record<ReviewKind, LearningPredicate>> = {
-  unmastered: (state) => state?.mastery === 'not_mastered',
+  unmastered: (state) =>
+    state?.mastery === 'not_mastered' && state.wrongFlag !== true,
   favorite: (state) => state?.favoriteFlag === true,
   wrong: (state) => state?.wrongFlag === true,
 };

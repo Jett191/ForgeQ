@@ -207,35 +207,35 @@ describe('Importer', () => {
     expect(listProvider.refresh).not.toHaveBeenCalled();
   });
 
-  it('已存在同名同版本 -> 用户选择"取消导入"', async () => {
+  it('已存在同名同版本 -> 阻止重复导入并提示先删除', async () => {
     // First import a bank
     const fileUri = HarnessUri.file('/tmp/bank.json');
     await writeFileAtUri(fileUri, VALID_BANK_JSON);
     showOpenDialogMock.mockResolvedValue([fileUri]);
-    showQuickPickMock.mockResolvedValue(undefined); // won't be called first time
-
     const ctx = harness.createExtensionContext();
 
     // First import (no duplicate)
-    showQuickPickMock.mockResolvedValue(undefined);
     await importBank(ctx as any, storage, registry, state, listProvider);
     expect(showInformationMessageMock).toHaveBeenCalledTimes(1);
 
     // Reset mocks for second call
     showInformationMessageMock.mockReset();
+    showErrorMessageMock.mockReset();
     listProvider.refresh.mockReset();
 
-    // Second import of same bank - duplicate exists
+    // Second import of same bank is rejected; no update/overwrite path exists.
     showOpenDialogMock.mockResolvedValue([fileUri]);
-    showQuickPickMock.mockResolvedValue('取消导入');
     await importBank(ctx as any, storage, registry, state, listProvider);
 
-    expect(showQuickPickMock).toHaveBeenCalled();
+    expect(showErrorMessageMock).toHaveBeenCalledWith(
+      expect.stringContaining('请先删除旧题库'),
+    );
     expect(showInformationMessageMock).not.toHaveBeenCalled();
     expect(listProvider.refresh).not.toHaveBeenCalled();
+    expect(storage.getCurrentMeta().banks).toHaveLength(1);
   });
 
-  it('已存在同名同版本 -> 用户选择"覆盖已有题库" -> 成功', async () => {
+  it('导入不同版本 -> 作为新题库加入并保留原题库', async () => {
     // First import
     const fileUri = HarnessUri.file('/tmp/bank.json');
     await writeFileAtUri(fileUri, VALID_BANK_JSON);
@@ -243,20 +243,27 @@ describe('Importer', () => {
 
     const ctx = harness.createExtensionContext();
     await importBank(ctx as any, storage, registry, state, listProvider);
+    const firstId = storage.getCurrentMeta().currentBankId!;
 
     // Reset mocks
     showInformationMessageMock.mockReset();
     listProvider.refresh.mockReset();
 
-    // Second import with override
-    showOpenDialogMock.mockResolvedValue([fileUri]);
-    showQuickPickMock.mockResolvedValue('覆盖已有题库');
+    const secondUri = HarnessUri.file('/tmp/bank-v2.json');
+    const secondBank = JSON.parse(VALID_BANK_JSON) as { version: string };
+    secondBank.version = '2.0';
+    await writeFileAtUri(secondUri, JSON.stringify(secondBank));
+    showOpenDialogMock.mockResolvedValue([secondUri]);
     await importBank(ctx as any, storage, registry, state, listProvider);
 
     expect(showInformationMessageMock).toHaveBeenCalledTimes(1);
     const msg = showInformationMessageMock.mock.calls[0]![0] as string;
     expect(msg).toContain('2');
     expect(listProvider.refresh).toHaveBeenCalledTimes(1);
+    const meta = storage.getCurrentMeta();
+    expect(meta.banks).toHaveLength(2);
+    expect(meta.banks.some((bank) => bank.id === firstId)).toBe(true);
+    expect(meta.currentBankId).not.toBe(firstId);
   });
 
   it('成功导入 -> 显示题数信息 + 触发 refresh', async () => {

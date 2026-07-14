@@ -10,38 +10,60 @@
 </head>
 <body>
   <div id="app">
-    <div class="question-header">
-      <h1 id="question-title"></h1>
-      <span id="question-type" class="badge"></span>
-      <span id="question-difficulty" class="badge"></span>
-      <span id="question-category" class="badge"></span>
-    </div>
+    <header class="q-head">
+      <div id="question-meta" class="q-meta"></div>
+      <div class="q-title-row">
+        <h1 id="question-title" class="q-title"></h1>
+        <div class="q-title-actions" aria-label="题目操作">
+          <button id="btn-open-project" class="q-icon-btn" type="button" aria-label="项目文件" title="项目文件">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3.5 6.75h6l2 2h9v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.75Z"></path>
+              <path d="M3.5 9.25h17"></path>
+            </svg>
+          </button>
+          <button id="btn-share-markdown" class="q-icon-btn" type="button" aria-label="分享 Markdown" title="分享 Markdown">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 5h5v5"></path>
+              <path d="m19 5-8.5 8.5"></path>
+              <path d="M18 13.5v4a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 17.5v-10A1.5 1.5 0 0 1 6.5 6h4"></path>
+            </svg>
+          </button>
+          <button id="btn-favorite" class="q-icon-btn q-fav" type="button" aria-label="收藏" title="收藏">
+            <span class="fav-icon" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+    </header>
 
-    <div id="question-content" class="content-area"></div>
+    <article id="question-content" class="md"></article>
 
-    <div id="test-cases" class="test-cases"></div>
-
-    <div class="controls">
-      <button id="btn-show-answer" class="primary">查看答案</button>
-      <button id="btn-favorite">收藏</button>
-      <div class="mastery-controls">
-        <button id="btn-unlearned" data-mastery="unlearned">未学习</button>
-        <button id="btn-learning" data-mastery="learning">学习中</button>
-        <button id="btn-mastered" data-mastery="mastered">已掌握</button>
-        <button id="btn-not-mastered" data-mastery="not_mastered">未掌握</button>
+    <div id="answer-toggle" class="answer-toggle">
+      <button id="btn-show-answer" class="btn primary" type="button">查看答案</button>
+      <div id="mastery-fab" class="mastery-fab">
+        <div class="mastery-options" hidden>
+          <button class="seg" type="button" data-mastery="unlearned" aria-label="未学习" title="未学习">○</button>
+          <button class="seg" type="button" data-mastery="not_mastered" aria-label="未掌握" title="未掌握">◔</button>
+          <button class="seg" type="button" data-mastery="mastered" aria-label="已掌握" title="已掌握">✓</button>
+          <button class="seg" type="button" data-wrong aria-label="错题" title="错题">✗</button>
+        </div>
+        <button id="btn-mastery" class="mastery-trigger" type="button" aria-label="学习状态" title="学习状态" aria-haspopup="true" aria-expanded="false">
+          <span class="mastery-icon" aria-hidden="true">○</span>
+        </button>
       </div>
     </div>
 
-    <div class="note-links">
-      <a id="link-open-note">在编辑器打开笔记</a>
-      <a id="link-note-preview">Markdown 预览</a>
-    </div>
+    <section id="answer-area" class="answer-area hidden">
+      <div id="answer-content"></div>
+      <div class="answer-actions">
+        <button id="btn-collapse-answer" class="btn-collapse" type="button" aria-label="收起答案" title="收起答案">
+          <span aria-hidden="true">↑</span>
+        </button>
+      </div>
+    </section>
 
-    <div id="answer-area" class="answer-area hidden"></div>
+    <section id="follow-ups" class="follow-ups"></section>
 
-    <div id="follow-ups" class="follow-ups"></div>
-
-    <p id="status-message" class="status-message"></p>
+    <div id="status-message" class="status-message" role="status" aria-live="polite"></div>
   </div>
 
   <script nonce="{{nonce}}" src="{{scriptUri}}"></script>
