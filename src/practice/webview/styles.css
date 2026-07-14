@@ -140,6 +140,22 @@ body {
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
+  transition: transform 0.14s ease;
+}
+
+.q-icon-btn:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.q-copy.copied {
+  color: var(--vscode-testing-iconPassed, #22a06b);
+  border-color: var(--vscode-testing-iconPassed, #22a06b);
+  background: rgba(34, 160, 107, 0.1);
+}
+
+.q-copy.copied svg {
+  transform: scale(0.9);
 }
 
 .q-fav.active {
