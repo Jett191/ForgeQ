@@ -2,17 +2,17 @@
   "name": "forgeq",
   "displayName": "ForgeQ",
   "description": "在 VS Code 里导入、练习和复习自己的题库",
-  "version": "0.0.1",
-  "publisher": "frontend-interview-practice",
+  "version": "0.0.2",
+  "publisher": "Jett191",
   "license": "MIT",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/Jett191/practice-code.git"
+    "url": "https://github.com/Jett191/ForgeQ.git"
   },
-  "homepage": "https://github.com/Jett191/practice-code#readme",
+  "homepage": "https://github.com/Jett191/ForgeQ#readme",
   "bugs": {
-    "url": "https://github.com/Jett191/practice-code/issues"
+    "url": "https://github.com/Jett191/ForgeQ/issues"
   },
   "engines": {
     "vscode": "^1.90.0",

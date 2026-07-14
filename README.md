@@ -4,13 +4,14 @@
 
 ForgeQ 是一款通用的本地题库练习扩展。无论是编程、面试准备、课程复习还是知识整理，你都可以导入自己的 JSON 题库，在原生编辑器中完成代码题或问答题，并通过收藏、错题和掌握状态持续复习。
 
-所有题库、作答和学习进度均保存在本机；ForgeQ 不上传题目或个人数据。
+所有题库、作答和学习进度均保存在本机；ForgeQ 不会上传这些数据。题库引用的 HTTPS 图片由 VS Code Webview 直接加载。
 
 ## 功能亮点
 
 - **本地题库**：导入一个或多个 JSON 题库，随时切换；导入时自动校验格式、字段和题目 ID。
 - **沉浸练习**：题目与编辑器并排显示，代码题可直接使用 VS Code 的补全、格式化和语法高亮。
 - **问答复习**：先独立思考，再展开参考答案、关键词、详细解析和追问。
+- **图片题目**：题干和答案支持通过 Markdown 嵌入 HTTPS 图片。
 - **学习记录**：为题目添加 Markdown 笔记，标记收藏、错题和掌握状态。
 - **定向复习**：一键生成“未掌握”“收藏”或“错题”复习集。
 - **快速定位**：按题型、分类和难度筛选，并可按分类分组展示。
@@ -135,6 +136,16 @@ ForgeQ 支持同时保存多个题库。题目列表顶部提供导入、切换�
 
 代码题还可使用 `language`、`initialCode`、`codeTemplate`、`referenceCode`、`testCases` 和 `solutionExplanation`。问答题还可使用 `keywords`、`briefAnswer`、`detailedAnswer` 和 `followUps`。
 
+### HTTPS 图片
+
+题干和答案中的 Markdown 可以引用 HTTPS 图片：
+
+```markdown
+![事件循环示意图](https://example.com/event-loop.png)
+```
+
+出于安全考虑，ForgeQ 只渲染 `https://` 图片，不加载 HTTP、Data URL 或本地文件图片。远程图片会懒加载，并且不会发送当前文档的 Referer。
+
 ## 命令
 
 在命令面板中输入 `ForgeQ` 可以找到主要操作：
@@ -152,7 +163,9 @@ ForgeQ 支持同时保存多个题库。题目列表顶部提供导入、切换�
 
 ## 数据与隐私
 
-ForgeQ 不需要账号，也不发送网络请求。题库、作答、笔记和学习状态保存在 VS Code 为扩展分配的 `globalStorageUri` 中。
+ForgeQ 不需要账号，也不会上传题库、作答、笔记或学习状态。这些数据保存在 VS Code 为扩展分配的 `globalStorageUri` 中。
+
+如果题库包含 HTTPS 图片，VS Code Webview 会直接向图片所在服务器发起请求。图片服务器可能获得你的 IP 地址、请求时间和常规网络信息；ForgeQ 会设置 `referrerpolicy="no-referrer"`，避免发送当前文档来源。
 
 主要目录结构如下：
 

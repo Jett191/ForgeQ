@@ -16,7 +16,7 @@
  *  - 围栏代码块 ``` lang ... ```（语言信息只取首段，忽略 `id="..."` 等元数据）
  *  - 分割线 `---` / `***`
  *  - 简单管道表格 `| h | h |\n| - | - |\n| c | c |`
- *  - 行内：`code`、**bold**、*italic*、[link](url)、`<code>` 已被转义
+ *  - 行内：`code`、**bold**、*italic*、[link](url)、HTTPS 图片、`<code>` 已被转义
  *
  * 所有用户文本进入渲染器之前都会先做 HTML 转义；在转义后的文本上做正则替换，
  * 既避免 XSS（webview 内即便有 vscode-api 也不希望执行注入），又保证代码块
@@ -227,7 +227,27 @@ function inlineRender(s: string): string {
     return `\u0000C${codes.length - 1}\u0000`;
   });
 
-  // 2) 链接 [text](url) —— 仅允许 http/https/mailto 与相对路径，规避 javascript:
+  // 2) 图片 ![alt](https://url) —— 仅允许 HTTPS；使用占位符避免图片属性
+  // 被后续强调语法的正则误处理。无效来源降级为普通替代文字。
+  const images: string[] = [];
+  out = out.replace(
+    /!\[([^\]\n]*)\]\(\s*([^\s)]+)(?:\s+&quot;([^\n]*?)&quot;)?\s*\)/g,
+    (_, alt: string, src: string, title: string | undefined) => {
+      const safeSrc = sanitizeImageSrc(src);
+      const index = images.length;
+      if (safeSrc === null) {
+        images.push(`<span class="md-image-fallback">${alt || '图片'}</span>`);
+      } else {
+        const titleAttr = title ? ` title="${title}"` : '';
+        images.push(
+          `<img src="${safeSrc}" alt="${alt}"${titleAttr} loading="lazy" decoding="async" referrerpolicy="no-referrer" />`,
+        );
+      }
+      return `\u0000I${index}\u0000`;
+    },
+  );
+
+  // 3) 链接 [text](url) —— 仅允许 http/https/mailto 与相对路径，规避 javascript:
   out = out.replace(
     /\[([^\]]+)\]\(([^)]+)\)/g,
     (_, text: string, href: string) => {
@@ -236,19 +256,37 @@ function inlineRender(s: string): string {
     },
   );
 
-  // 3) 加粗 + 斜体 / 加粗 / 斜体（顺序不能颠倒）
+  // 4) 加粗 + 斜体 / 加粗 / 斜体（顺序不能颠倒）
   out = out.replace(/\*\*\*([^*]+?)\*\*\*/g, '<strong><em>$1</em></strong>');
   out = out.replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
   // 斜体：避免吞掉成对加粗的剩余 `*`，要求左右非 `*`
   out = out.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
 
-  // 4) 还原 inline code 占位
+  // 5) 还原 inline code 与图片占位
   out = out.replace(/\u0000C(\d+)\u0000/g, (_, idx: string) => {
     const i = Number(idx);
     return codes[i] ?? '';
   });
+  out = out.replace(/\u0000I(\d+)\u0000/g, (_, idx: string) => {
+    const i = Number(idx);
+    return images[i] ?? '';
+  });
 
   return out;
+}
+
+/** 验证图片地址，并返回已经过 HTML 转义、可安全写入属性的原值。 */
+function sanitizeImageSrc(src: string): string | null {
+  // inlineRender 已先执行 escapeHtml；这里只还原 &amp; 用于 URL 语义校验，
+  // 返回值仍使用转义后的 src，避免属性注入。
+  const candidate = src.replace(/&amp;/g, '&');
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'https:' || url.hostname === '') return null;
+    return src;
+  } catch {
+    return null;
+  }
 }
 
 function sanitizeHref(href: string): string {

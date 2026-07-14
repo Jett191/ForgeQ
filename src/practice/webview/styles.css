@@ -237,6 +237,19 @@ body {
   overflow-wrap: break-word;
 }
 
+.md img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 14px auto;
+  border-radius: var(--radius-md);
+}
+
+.md-image-fallback {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
 .md > :first-child {
   margin-top: 0;
 }
