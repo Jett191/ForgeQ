@@ -148,18 +148,18 @@ describe('Importer', () => {
     expect(listProvider.refresh).not.toHaveBeenCalled();
   });
 
-  it('文件 > 10MB -> 短路，不读取内容', async () => {
-    // Write a fake file path that will be "stat'd" as > 10MB
+  it('文件 > 20 MiB -> 短路，不读取内容', async () => {
+    // Write a fake file path that will be "stat'd" as > 20 MiB
     const fileUri = HarnessUri.file('/tmp/big-file.json');
     // Write minimal content, then override stat via failure injection
     await writeFileAtUri(fileUri, 'x');
 
-    // We need the stat to report > 10MB. Since memfs stat returns actual file size,
-    // let's write a large placeholder. We'll write just enough bytes to indicate > 10MB
+    // We need the stat to report > 20 MiB. Since memfs stat returns actual file size,
+    // let's write a large placeholder. We'll write just enough bytes to indicate > 20 MiB
     // by using failure injection approach - actually let's write a real indication.
     // Simpler: write enough that stat reports correct size
-    // Actually, let's create a buffer of > 10MB
-    const bigContent = new Uint8Array(10 * 1024 * 1024 + 1);
+    // Actually, let's create a buffer of > 20 MiB
+    const bigContent = new Uint8Array(20 * 1024 * 1024 + 1);
     await harness.workspaceFs.writeFile(fileUri, bigContent);
 
     showOpenDialogMock.mockResolvedValue([fileUri]);
@@ -169,7 +169,7 @@ describe('Importer', () => {
 
     expect(showErrorMessageMock).toHaveBeenCalledTimes(1);
     const msg = showErrorMessageMock.mock.calls[0]![0] as string;
-    expect(msg).toContain('10 MB');
+    expect(msg).toContain('20 MiB');
     expect(listProvider.refresh).not.toHaveBeenCalled();
   });
 

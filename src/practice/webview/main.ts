@@ -313,6 +313,7 @@ function showAnswer(payload: AnswerPayload): void {
 }
 
 let statusTimer: ReturnType<typeof setTimeout> | undefined;
+let copyFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
 
 function showStatus(msg: string): void {
   const el = $('status-message');
@@ -332,6 +333,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('btn-share-markdown')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'shareMarkdown' });
+  });
+
+  $('btn-copy-ai')?.addEventListener('click', () => {
+    const button = $('btn-copy-ai') as HTMLButtonElement | null;
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    vscode.postMessage({ type: 'copyForAi' });
   });
 
   $('btn-show-answer')?.addEventListener('click', () => {
@@ -420,6 +429,30 @@ window.addEventListener('message', (event) => {
         showStatus(`已导出 ${msg.fileName ?? 'Markdown 文件'}`);
       } else if (!msg.cancelled) {
         showStatus(`导出失败: ${msg.reason ?? '未知错误'}`);
+      }
+      break;
+    }
+    case 'copyAck': {
+      const button = $('btn-copy-ai') as HTMLButtonElement | null;
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
+      if (msg.ok) {
+        if (button) {
+          button.classList.add('copied');
+          button.setAttribute('aria-label', '已复制完整内容');
+          button.setAttribute('title', '已复制');
+          if (copyFeedbackTimer !== undefined) clearTimeout(copyFeedbackTimer);
+          copyFeedbackTimer = setTimeout(() => {
+            button.classList.remove('copied');
+            button.setAttribute('aria-label', '复制完整内容，粘贴给 AI');
+            button.setAttribute('title', '复制给 AI');
+          }, 1600);
+        }
+        showStatus('已复制完整内容，可直接粘贴给 AI');
+      } else {
+        showStatus(`复制失败: ${msg.reason ?? '未知错误'}`);
       }
       break;
     }

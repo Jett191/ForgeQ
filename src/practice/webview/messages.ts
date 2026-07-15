@@ -37,7 +37,8 @@ export type HostToWebviewMessage =
       cancelled?: boolean;
       fileName?: string;
       reason?: string;
-    };
+    }
+  | { type: 'copyAck'; ok: boolean; reason?: string };
 
 /**
  * "查看答案" 的 payload。题型只用于标签，答案结构完全相同。
@@ -58,5 +59,6 @@ export type WebviewToHostMessage =
   | { type: 'setMastery'; value: MasteryStatus }
   | { type: 'openProject' }
   | { type: 'shareMarkdown' }
+  | { type: 'copyForAi' }
   | { type: 'openNativeEditor'; target: 'code' | 'qa' | 'note' }
   | { type: 'requestNotePreview' };

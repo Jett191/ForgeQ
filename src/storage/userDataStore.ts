@@ -524,6 +524,11 @@ export class UserDataStore {
     return this.readTextOrUndefined(uri);
   }
 
+  /** 返回笔记文件 URI；不会创建或修改文件。 */
+  getNoteUri(bankId: string, qid: string): vscode.Uri {
+    return this.noteFileUri(bankId, qid);
+  }
+
   /**
    * 写入或清空笔记。
    *

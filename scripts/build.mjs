@@ -16,7 +16,7 @@
 //   NODE_ENV=production node scripts/build.mjs
 
 import { existsSync } from 'node:fs';
-import { mkdir, copyFile, watch as fsWatch } from 'node:fs/promises';
+import { cp, mkdir, readFile, writeFile, watch as fsWatch } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
@@ -119,26 +119,31 @@ async function generateSchema() {
  *
  * panel.ts uses `webview.asWebviewUri(... 'dist/webview/styles.css')`, and the
  * webview's `localResourceRoots` only whitelists `dist/webview/`, so anything
- * referenced by the rendered HTML must live there. Bundling CSS through esbuild
- * would change the import semantics for stylesheets, so a plain copy keeps the
- * pipeline simple and the file watch-friendly.
+ * referenced by the rendered HTML must live there. The app stylesheet is
+ * combined with KaTeX CSS, and KaTeX web fonts are copied beside it so the
+ * webview stays fully local and works under the CSP.
  */
 async function copyWebviewAssets() {
-  const assets = ['styles.css'];
   const srcDir = path.join(projectRoot, 'src', 'practice', 'webview');
   const outDir = path.join(projectRoot, 'dist', 'webview');
   await mkdir(outDir, { recursive: true });
-  for (const name of assets) {
-    const src = path.join(srcDir, name);
-    if (!existsSync(src)) continue;
-    const dst = path.join(outDir, name);
-    await copyFile(src, dst);
-    console.log(
-      `[build] copied webview asset: ${path.relative(projectRoot, src)} -> ${path.relative(
-        projectRoot,
-        dst,
-      )}`,
-    );
+
+  const appCssPath = path.join(srcDir, 'styles.css');
+  const katexDist = path.join(projectRoot, 'node_modules', 'katex', 'dist');
+  const katexCssPath = path.join(katexDist, 'katex.min.css');
+  const cssParts = [];
+  if (existsSync(katexCssPath)) cssParts.push(await readFile(katexCssPath, 'utf8'));
+  if (existsSync(appCssPath)) cssParts.push(await readFile(appCssPath, 'utf8'));
+  if (cssParts.length > 0) {
+    const cssOutput = path.join(outDir, 'styles.css');
+    await writeFile(cssOutput, cssParts.join('\n'), 'utf8');
+    console.log('[build] assembled webview styles (KaTeX + app CSS)');
+  }
+
+  const katexFonts = path.join(katexDist, 'fonts');
+  if (existsSync(katexFonts)) {
+    await cp(katexFonts, path.join(outDir, 'fonts'), { recursive: true, force: true });
+    console.log('[build] copied KaTeX web fonts');
   }
 }
 

@@ -18,15 +18,15 @@ import {
   type ReviewSyncTarget,
 } from '../views/providerSync.js';
 
-/** 10 MB 上限（字节）。 */
-const FILE_SIZE_LIMIT = 10 * 1024 * 1024;
+/** 20 MiB 上限（字节），可容纳带内嵌题解的大型题库。 */
+const FILE_SIZE_LIMIT = 20 * 1024 * 1024;
 
 /**
  * 导入题库。
  *
  * 流程：
  *   1. `showOpenDialog`（单选、`*.json` 过滤）
- *   2. `stat` 文件大小；> 10MB 返回 `FILE_TOO_LARGE`
+ *   2. `stat` 文件大小；> 20 MiB 返回 `FILE_TOO_LARGE`
  *   3. UTF-8 读取文件内容
  *   4. 调用 `parse(text)`
  *   5. 解析失败 -> `showErrorMessage` + 不修改 Storage
@@ -68,7 +68,7 @@ export async function importBank(
 
   if (fileStat.size > FILE_SIZE_LIMIT) {
     await vscode.window.showErrorMessage(
-      `文件大小超过 10 MB 限制 (${(fileStat.size / 1024 / 1024).toFixed(2)} MB)，无法导入。`,
+      `文件大小超过 20 MiB 限制 (${(fileStat.size / 1024 / 1024).toFixed(2)} MiB)，无法导入。`,
     );
     return;
   }
