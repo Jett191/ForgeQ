@@ -27,6 +27,7 @@ import type {
   HostToWebviewMessage,
   WebviewToHostMessage,
 } from './messages.js';
+import { buildQuestionPlainText } from '../copyPlainText.js';
 
 const VIEW_TYPE = 'frontendInterview.practiceView';
 
@@ -134,7 +135,7 @@ export class PracticePanel {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+    content="default-src 'none'; img-src https:; font-src ${cspSource}; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
   <link rel="stylesheet" href="${stylesUri}" />
   <title>Practice</title>
 </head>
@@ -156,6 +157,12 @@ export class PracticePanel {
               <path d="M14 5h5v5"></path>
               <path d="m19 5-8.5 8.5"></path>
               <path d="M18 13.5v4a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 17.5v-10A1.5 1.5 0 0 1 6.5 6h4"></path>
+            </svg>
+          </button>
+          <button id="btn-copy-ai" class="q-icon-btn q-copy" type="button" aria-label="复制完整内容，粘贴给 AI" title="复制给 AI">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="8" y="8" width="11" height="11" rx="1.75"></rect>
+              <path d="M16 8V6.75A1.75 1.75 0 0 0 14.25 5h-7.5A1.75 1.75 0 0 0 5 6.75v7.5A1.75 1.75 0 0 0 6.75 16H8"></path>
             </svg>
           </button>
           <button id="btn-favorite" class="q-icon-btn q-fav" type="button" aria-label="收藏" title="收藏">
@@ -259,7 +266,10 @@ export class PracticePanel {
     const { storage } = this.deps;
 
     const isReadOnlyMessage =
-      msg.type === 'ready' || msg.type === 'requestAnswer' || msg.type === 'shareMarkdown';
+      msg.type === 'ready' ||
+      msg.type === 'requestAnswer' ||
+      msg.type === 'shareMarkdown' ||
+      msg.type === 'copyForAi';
     const bankStillExists = storage.getCurrentMeta().banks.some((bank) => bank.id === bankId);
     if (!isReadOnlyMessage && !bankStillExists) {
       const reason = '题库已被移除或替换';
@@ -414,6 +424,23 @@ export class PracticePanel {
         break;
       }
 
+      case 'copyForAi': {
+        try {
+          const [answerFiles, note] = await Promise.all([
+            this.readAnswerFiles(bankId, qid),
+            this.readNoteContent(bankId, qid),
+          ]);
+          const learning = getOrDefault(learningMap.get(qid));
+          const text = buildQuestionPlainText(question, answerFiles, learning, note);
+          await vscode.env.clipboard.writeText(text);
+          this.postMessage(bankId, qid, { type: 'copyAck', ok: true });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          this.postMessage(bankId, qid, { type: 'copyAck', ok: false, reason });
+        }
+        break;
+      }
+
       case 'openNativeEditor': {
         const target = msg.target;
         let fileUri: vscode.Uri | undefined;
@@ -467,5 +494,15 @@ export class PracticePanel {
     }
 
     return answers;
+  }
+
+  /** Read the note while preferring any unsaved editor buffer. */
+  private async readNoteContent(bankId: string, qid: string): Promise<string | undefined> {
+    const noteUri = this.deps.storage.userData.getNoteUri(bankId, qid);
+    const openDocument = vscode.workspace.textDocuments.find(
+      (document) => document.uri.toString() === noteUri.toString(),
+    );
+    if (openDocument) return openDocument.getText();
+    return this.deps.storage.userData.readNote(bankId, qid);
   }
 }

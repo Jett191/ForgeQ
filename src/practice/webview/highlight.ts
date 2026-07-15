@@ -2,10 +2,13 @@
  * 极简语法高亮（webview 内嵌，零依赖）。
  *
  * 配合 `markdown.ts` 在前端面试题代码块上提供 GitHub 风格的着色：
- *  - js / ts / jsx / tsx / javascript / typescript（最完整）
+ *  - js / javascript、ts / typescript（关键字 / 类型 / 函数）
+ *  - jsx / tsx（JS / TS 规则 + JSX 标签）
+ *  - go / golang（关键字 / 内置类型 / 函数 / 字符串 / 注释 / 数字）
  *  - css / scss / less（属性 / 数值 / 字符串 / 注释 / 颜色）
  *  - html / xml / vue / svg（标签 / 属性 / 字符串 / 注释）
  *  - json / json5（key / 字符串 / 数字 / 布尔）
+ *  - java（关键字 / 类型 / 方法 / 注解 / 字符串 / 注释 / 数字）
  *  - py / python、sh / bash / zsh（基础关键字 / 字符串 / 注释）
  * 其它语言降级为纯文本（仅做 HTML 转义）。
  *
@@ -98,6 +101,18 @@ const JS_RULES: ReadonlyArray<Rule> = [
   { kind: 'fn', re: /\b[a-zA-Z_$][\w$]*(?=\s*\()/y },
 ];
 
+/**
+ * JSX / TSX 在 JS / TS 规则上增加标签名着色。
+ *
+ * 这里只给 `<Card` / `</Card` 这类确定的标签起始部分着色，不单独匹配 `>`，
+ * 避免把 `value > limit` 中的比较运算符误判为 JSX 标签结束符。
+ */
+const JSX_RULES: ReadonlyArray<Rule> = [
+  ...JS_RULES.slice(0, 5),
+  { kind: 'tag', re: /<\/?[A-Za-z_$][\w$:.-]*/y },
+  ...JS_RULES.slice(5),
+];
+
 /** CSS / SCSS / LESS 规则。Selector 不做精细高亮，重点在 prop / value / 颜色。 */
 const CSS_RULES: ReadonlyArray<Rule> = [
   { kind: 'com', re: /\/\*[\s\S]*?\*\//y },
@@ -149,6 +164,52 @@ const PY_RULES: ReadonlyArray<Rule> = [
   { kind: 'fn', re: /\b[a-zA-Z_]\w*(?=\s*\()/y },
 ];
 
+/** Java 规则。注释、文本块、字符串和字符字面量优先，避免内部关键字误染。 */
+const JAVA_RULES: ReadonlyArray<Rule> = [
+  { kind: 'com', re: /\/\/[^\n]*/y },
+  { kind: 'com', re: /\/\*[\s\S]*?\*\//y },
+  { kind: 'str', re: /"""[\s\S]*?"""/y },
+  { kind: 'str', re: /"(?:\\.|[^"\\\n])*"/y },
+  { kind: 'str', re: /'(?:\\.|[^'\\\n])'/y },
+  { kind: 'attr', re: /@[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/y },
+  {
+    kind: 'kw',
+    re: /\b(?:abstract|assert|break|case|catch|class|const|continue|default|do|else|enum|extends|final|finally|for|goto|if|implements|import|instanceof|interface|native|new|non-sealed|package|permits|private|protected|public|record|return|sealed|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|var|volatile|while|yield)\b/y,
+  },
+  { kind: 'ty', re: /\b(?:boolean|byte|char|double|float|int|long|short|void)\b/y },
+  { kind: 'bool', re: /\b(?:true|false|null)\b/y },
+  {
+    kind: 'num',
+    re: /\b(?:0[xX][0-9a-fA-F](?:_?[0-9a-fA-F])*|0[bB][01](?:_?[01])*|\d(?:_?\d)*(?:\.\d(?:_?\d)*)?(?:[eE][+-]?\d(?:_?\d)*)?)[fFdDlL]?\b/y,
+  },
+  { kind: 'ty', re: /\b[A-Z][\w$]*\b/y },
+  { kind: 'fn', re: /\b[a-zA-Z_$][\w$]*(?=\s*\()/y },
+];
+
+/** Go 规则。原始字符串必须先于普通字符串，`go` 关键字与语言名互不混淆。 */
+const GO_RULES: ReadonlyArray<Rule> = [
+  { kind: 'com', re: /\/\/[^\n]*/y },
+  { kind: 'com', re: /\/\*[\s\S]*?\*\//y },
+  { kind: 'str', re: /`[^`]*`/y },
+  { kind: 'str', re: /"(?:\\.|[^"\\\n])*"/y },
+  { kind: 'str', re: /'(?:\\.|[^'\\\n])'/y },
+  {
+    kind: 'kw',
+    re: /\b(?:break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go|goto|if|import|interface|map|package|range|return|select|struct|switch|type|var)\b/y,
+  },
+  {
+    kind: 'ty',
+    re: /\b(?:any|bool|byte|comparable|complex64|complex128|error|float32|float64|int|int8|int16|int32|int64|rune|string|uint|uint8|uint16|uint32|uint64|uintptr)\b/y,
+  },
+  { kind: 'bool', re: /\b(?:true|false|nil|iota)\b/y },
+  {
+    kind: 'num',
+    re: /\b(?:0[xX][0-9a-fA-F](?:_?[0-9a-fA-F])*|0[bB][01](?:_?[01])*|0[oO][0-7](?:_?[0-7])*|\d(?:_?\d)*(?:\.\d(?:_?\d)*)?(?:[eE][+-]?\d(?:_?\d)*)?i?)\b/y,
+  },
+  { kind: 'ty', re: /\b[A-Z][\w]*\b/y },
+  { kind: 'fn', re: /\b[a-zA-Z_][\w]*(?=\s*\()/y },
+];
+
 const SH_RULES: ReadonlyArray<Rule> = [
   { kind: 'com', re: /#[^\n]*/y },
   { kind: 'str', re: /"(?:\\.|[^"\\])*"/y },
@@ -163,12 +224,17 @@ const SH_RULES: ReadonlyArray<Rule> = [
 function langKey(lang: string): string {
   switch (lang.toLowerCase()) {
     case 'js':
-    case 'jsx':
     case 'javascript':
-    case 'ts':
-    case 'tsx':
-    case 'typescript':
       return 'js';
+    case 'ts':
+    case 'typescript':
+      return 'ts';
+    case 'jsx':
+    case 'tsx':
+      return 'jsx';
+    case 'go':
+    case 'golang':
+      return 'go';
     case 'css':
     case 'scss':
     case 'less':
@@ -184,6 +250,8 @@ function langKey(lang: string): string {
     case 'py':
     case 'python':
       return 'py';
+    case 'java':
+      return 'java';
     case 'sh':
     case 'bash':
     case 'shell':
@@ -203,6 +271,12 @@ export function highlight(code: string, lang: string): string {
   switch (langKey(lang)) {
     case 'js':
       return tokenize(code, JS_RULES);
+    case 'ts':
+      return tokenize(code, JS_RULES);
+    case 'jsx':
+      return tokenize(code, JSX_RULES);
+    case 'go':
+      return tokenize(code, GO_RULES);
     case 'css':
       return tokenize(code, CSS_RULES);
     case 'html':
@@ -211,6 +285,8 @@ export function highlight(code: string, lang: string): string {
       return tokenize(code, JSON_RULES);
     case 'py':
       return tokenize(code, PY_RULES);
+    case 'java':
+      return tokenize(code, JAVA_RULES);
     case 'sh':
       return tokenize(code, SH_RULES);
     default:
