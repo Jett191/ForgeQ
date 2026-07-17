@@ -93,6 +93,47 @@ describe('QuestionProjectManager example', () => {
     });
   });
 
+  it('首次创建列表使用 JS、JSX、Java、Go、C、Python 和 Markdown 预设', async () => {
+    const storage = createStorage();
+    let shownItems: Array<{ fileName?: string }> = [];
+    mocks.showQuickPick.mockImplementation(async (items: Array<{ fileName?: string }>) => {
+      shownItems = items;
+      return undefined;
+    });
+    const manager = new QuestionProjectManager(storage as never);
+
+    await manager.open({ bankId: 'bank-1', question });
+
+    expect(shownItems.flatMap((item) => (item.fileName ? [item.fileName] : []))).toEqual([
+      'index.js',
+      'App.jsx',
+      'Main.java',
+      'main.go',
+      'main.c',
+      'main.py',
+      'answer.md',
+    ]);
+  });
+
+  it.each(['Main.java', 'main.go', 'main.c', 'main.py'])(
+    '首次打开时可创建 %s',
+    async (fileName) => {
+      const storage = createStorage();
+      mocks.showQuickPick.mockImplementation(async (items: Array<{ fileName?: string }>) =>
+        items.find((item) => item.fileName === fileName),
+      );
+      const manager = new QuestionProjectManager(storage as never);
+
+      await manager.open({ bankId: 'bank-1', question });
+
+      expect(storage.userData.ensureQuestionProjectFile).toHaveBeenCalledWith(
+        'bank-1',
+        'q1',
+        fileName,
+      );
+    },
+  );
+
   it('选择空项目文件夹时在当前窗口创建并打开默认 index.js', async () => {
     const storage = createStorage();
     mocks.showQuickPick.mockImplementation(async (items: Array<{ action: string }>) =>

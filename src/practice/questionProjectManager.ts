@@ -35,8 +35,10 @@ export interface QuestionProjectOpenOptions {
 const PRESET_FILES: ReadonlyArray<{ label: string; description: string; fileName: string }> = [
   { label: '$(file-code) JavaScript 文件', description: '创建 index.js', fileName: 'index.js' },
   { label: '$(file-code) JSX 文件', description: '创建 App.jsx', fileName: 'App.jsx' },
-  { label: '$(file-code) TypeScript 文件', description: '创建 index.ts', fileName: 'index.ts' },
-  { label: '$(file-code) TSX 文件', description: '创建 App.tsx', fileName: 'App.tsx' },
+  { label: '$(file-code) Java 文件', description: '创建 Main.java', fileName: 'Main.java' },
+  { label: '$(file-code) Go 文件', description: '创建 main.go', fileName: 'main.go' },
+  { label: '$(file-code) C 文件', description: '创建 main.c', fileName: 'main.c' },
+  { label: '$(file-code) Python 文件', description: '创建 main.py', fileName: 'main.py' },
   { label: '$(markdown) Markdown 文件', description: '创建 answer.md', fileName: 'answer.md' },
 ];
 
@@ -115,7 +117,18 @@ export class QuestionProjectManager {
 
   /** Pick a stable primary answer when a project contains more than one file. */
   private primaryAnswerFile(files: ReadonlyArray<QuestionProjectFile>): QuestionProjectFile {
-    const preferredNames = ['index.js', 'answer.md', 'index.ts', 'App.jsx', 'App.tsx'];
+    const preferredNames = [
+      'index.js',
+      'Main.java',
+      'main.go',
+      'main.c',
+      'main.py',
+      'answer.md',
+      'App.jsx',
+      // 兼容升级前已经创建的 TypeScript 项目。
+      'index.ts',
+      'App.tsx',
+    ];
     for (const name of preferredNames) {
       const match = files.find(
         (file) => file.relativePath === name || file.relativePath.endsWith(`/${name}`),
