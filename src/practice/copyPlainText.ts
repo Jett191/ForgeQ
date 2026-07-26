@@ -48,6 +48,11 @@ function appendFollowUps(lines: string[], question: Question): void {
   });
 }
 
+export interface CopyPlainTextOptions {
+  includeReferenceAnswer?: boolean;
+  includeRawQuestionJson?: boolean;
+}
+
 /**
  * 构建适合直接粘贴给 AI 的完整纯文本上下文。
  *
@@ -59,10 +64,13 @@ export function buildQuestionPlainText(
   answerFiles: ReadonlyArray<SharedAnswerFile>,
   learning: LearningState,
   note?: string,
+  options: CopyPlainTextOptions = {},
 ): string {
+  const includeReferenceAnswer = options.includeReferenceAnswer ?? true;
+  const includeRawQuestionJson = options.includeRawQuestionJson ?? true;
   const lines: string[] = [
     'FORGEQ 题目完整上下文',
-    '请结合题目、参考答案、我的作答、个人笔记和原始数据回答后续问题。',
+    '请结合题目、我的作答、个人笔记和学习状态回答后续问题。',
     '',
     '================================================================',
     '【题目信息】',
@@ -77,32 +85,37 @@ export function buildQuestionPlainText(
     '【题目】',
     valueOrEmpty(question.content),
     '',
-    '================================================================',
-    '【参考答案】',
-    `基础答案：\n${valueOrEmpty(question.answer)}`,
-    '',
-    `简要答案：\n${valueOrEmpty(question.briefAnswer)}`,
-    '',
-    `详细答案：\n${valueOrEmpty(question.detailedAnswer)}`,
-    '',
   ];
 
-  if (question.type === 'code') {
+  if (includeReferenceAnswer) {
     lines.push(
-      `参考代码：\n${valueOrEmpty(question.referenceCode)}`,
+      '================================================================',
+      '【参考答案】',
+      `基础答案：\n${valueOrEmpty(question.answer)}`,
       '',
-      `解题思路：\n${valueOrEmpty(question.solutionExplanation)}`,
+      `简要答案：\n${valueOrEmpty(question.briefAnswer)}`,
       '',
-      '测试用例：',
-      question.testCases?.length
-        ? JSON.stringify(question.testCases, null, 2)
-        : '（无）',
+      `详细答案：\n${valueOrEmpty(question.detailedAnswer)}`,
       '',
     );
-  }
 
-  lines.push('追问：');
-  appendFollowUps(lines, question);
+    if (question.type === 'code') {
+      lines.push(
+        `参考代码：\n${valueOrEmpty(question.referenceCode)}`,
+        '',
+        `解题思路：\n${valueOrEmpty(question.solutionExplanation)}`,
+        '',
+        '测试用例：',
+        question.testCases?.length
+          ? JSON.stringify(question.testCases, null, 2)
+          : '（无）',
+        '',
+      );
+    }
+
+    lines.push('追问：');
+    appendFollowUps(lines, question);
+  }
 
   lines.push(
     '================================================================',
@@ -123,10 +136,15 @@ export function buildQuestionPlainText(
     `存在笔记：${learning.hasNote ? '是' : '否'}`,
     `最近练习时间：${formatLastPracticedAt(learning.lastPracticedAt)}`,
     '',
-    '================================================================',
-    '【题目原始 JSON】',
-    JSON.stringify(question, null, 2),
   );
+
+  if (includeRawQuestionJson) {
+    lines.push(
+      '================================================================',
+      '【题目原始 JSON】',
+      JSON.stringify(question, null, 2),
+    );
+  }
 
   return `${lines.join('\n').trimEnd()}\n`;
 }

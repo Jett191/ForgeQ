@@ -11,6 +11,11 @@ import * as os from 'node:os';
 
 import * as vscode from 'vscode';
 
+import {
+  DEFAULT_FORGEQ_SETTINGS,
+  type ForgeQSettings,
+  type NoteOpenMode,
+} from '../../config/settings.js';
 import type { LearningState } from '../../types/learning.js';
 import type { MasteryStatus, Question } from '../../types/question.js';
 import { deriveLearningState, toggleWrongFlag } from '../../domain/masteryRules.js';
@@ -42,6 +47,13 @@ export interface PanelDeps {
     question: Question,
     learning: Map<string, LearningState>,
   ) => Promise<void>;
+  onOpenNote?: (
+    bankId: string,
+    qid: string,
+    learning: Map<string, LearningState>,
+    mode: NoteOpenMode,
+  ) => Promise<void>;
+  getSettings?: () => ForgeQSettings;
 }
 
 interface PanelInstance {
@@ -152,6 +164,13 @@ export class PracticePanel {
               <path d="M3.5 9.25h17"></path>
             </svg>
           </button>
+          <button id="btn-open-note" class="q-icon-btn q-note" type="button" aria-label="个人笔记" title="个人笔记">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 4.75h9.5L19 8.25v11H6a2 2 0 0 1-2-2V6.75a2 2 0 0 1 2-2Z"></path>
+              <path d="M15.5 4.75v3.5H19"></path>
+              <path d="M8 12h7M8 15.5h5"></path>
+            </svg>
+          </button>
           <button id="btn-share-markdown" class="q-icon-btn" type="button" aria-label="分享 Markdown" title="分享 Markdown">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M14 5h5v5"></path>
@@ -179,6 +198,7 @@ export class PracticePanel {
       <div id="mastery-fab" class="mastery-fab">
         <div class="mastery-options" hidden>
           <button class="seg" type="button" data-mastery="unlearned" aria-label="未学习" title="未学习">○</button>
+          <button class="seg" type="button" data-mastery="learning" aria-label="学习中" title="学习中">◑</button>
           <button class="seg" type="button" data-mastery="not_mastered" aria-label="未掌握" title="未掌握">◔</button>
           <button class="seg" type="button" data-mastery="mastered" aria-label="已掌握" title="已掌握">✓</button>
           <button class="seg" type="button" data-wrong aria-label="错题" title="错题">✗</button>
@@ -286,6 +306,7 @@ export class PracticePanel {
     switch (msg.type) {
       case 'ready': {
         const learning = getOrDefault(learningMap.get(qid));
+        const settings = this.settings();
 
         const initPayload: HostToWebviewMessage = {
           type: 'init',
@@ -294,6 +315,9 @@ export class PracticePanel {
             question,
             learning,
             noteFileUri: `notes/${qid}.md`,
+            preferences: {
+              revealAnswerOnOpen: settings.practice.revealAnswerOnOpen,
+            },
           },
         };
         this.postMessage(bankId, qid, initPayload);
@@ -301,9 +325,13 @@ export class PracticePanel {
       }
 
       case 'requestAnswer': {
+        const settings = this.settings();
         const payload: AnswerPayload = {
           questionType: question.type,
-          answer: deriveQuestionAnswer(question),
+          answer: deriveQuestionAnswer(question, {
+            includeKeywords: settings.display.showKeywords,
+            includeCodeDetails: settings.display.showCodeDetails,
+          }),
         };
         this.postMessage(bankId, qid, { type: 'showAnswer', payload });
         break;
@@ -390,6 +418,16 @@ export class PracticePanel {
         break;
       }
 
+      case 'openNote': {
+        await this.deps.onOpenNote?.(
+          bankId,
+          qid,
+          learningMap,
+          this.settings().practice.noteOpenMode,
+        );
+        break;
+      }
+
       case 'shareMarkdown': {
         const defaultDirectory =
           vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(os.homedir());
@@ -431,7 +469,11 @@ export class PracticePanel {
             this.readNoteContent(bankId, qid),
           ]);
           const learning = getOrDefault(learningMap.get(qid));
-          const text = buildQuestionPlainText(question, answerFiles, learning, note);
+          const settings = this.settings();
+          const text = buildQuestionPlainText(question, answerFiles, learning, note, {
+            includeReferenceAnswer: settings.copy.includeReferenceAnswer,
+            includeRawQuestionJson: settings.copy.includeRawQuestionJson,
+          });
           await vscode.env.clipboard.writeText(text);
           this.postMessage(bankId, qid, { type: 'copyAck', ok: true });
         } catch (error) {
@@ -442,32 +484,16 @@ export class PracticePanel {
       }
 
       case 'openNativeEditor': {
-        const target = msg.target;
-        let fileUri: vscode.Uri | undefined;
-
-        if (target === 'code' || target === 'qa') {
+        if (msg.target === 'note') {
+          await this.deps.onOpenNote?.(bankId, qid, learningMap, 'editor');
+        } else {
           await this.deps.onOpenProject?.(bankId, qid, question, learningMap);
-          break;
-        } else if (target === 'note') {
-          fileUri = await storage.userData.ensurePracticeFile(
-            bankId, qid, 'note', '.md', '',
-          );
-        }
-
-        if (fileUri) {
-          const doc = await vscode.workspace.openTextDocument(fileUri);
-          await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
         }
         break;
       }
 
       case 'requestNotePreview': {
-        const noteUri = await storage.userData.ensurePracticeFile(
-          bankId, qid, 'note', '.md', '',
-        );
-        const doc = await vscode.workspace.openTextDocument(noteUri);
-        await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
-        await vscode.commands.executeCommand('markdown.showPreview');
+        await this.deps.onOpenNote?.(bankId, qid, learningMap, 'preview');
         break;
       }
     }
@@ -504,5 +530,9 @@ export class PracticePanel {
     );
     if (openDocument) return openDocument.getText();
     return this.deps.storage.userData.readNote(bankId, qid);
+  }
+
+  private settings(): ForgeQSettings {
+    return this.deps.getSettings?.() ?? DEFAULT_FORGEQ_SETTINGS;
   }
 }

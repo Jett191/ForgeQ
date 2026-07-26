@@ -1,13 +1,19 @@
 /**
  * PracticeController（Task 19）。
  *
- * 编排练习流程：打开单题项目 + Webview Panel，监听项目文件保存以更新 lastPracticedAt。
+ * 编排练习流程：打开单题项目 + Webview Panel，监听项目文件编辑以更新学习状态，
+ * 并监听个人笔记保存以同步 hasNote。
  *
  * Validates: Requirements 5.1, 5.3, 6.1, 6.3, 7.1
  */
 
 import * as vscode from 'vscode';
 
+import {
+  DEFAULT_FORGEQ_SETTINGS,
+  type ForgeQSettings,
+  type NoteOpenMode,
+} from '../config/settings.js';
 import type { InMemoryState, Storage } from '../storage/storage.js';
 import { getOrDefault } from '../storage/userDataStore.js';
 import { QuestionProjectManager } from './questionProjectManager.js';
@@ -19,11 +25,13 @@ const DEBOUNCE_MS = 1000;
 interface OpenDocumentBinding {
   bankId: string;
   qid: string;
+  kind: 'project' | 'note';
   learning: Map<string, import('../types/learning.js').LearningState>;
 }
 
 export interface PracticeControllerOptions {
   onLearningChanged?: (bankId: string, qid: string) => void;
+  getSettings?: () => ForgeQSettings;
 }
 
 /**
@@ -54,6 +62,7 @@ export class PracticeController {
         );
         if (binding) this.uriBindings.set(uri.toString(), binding);
       },
+      ...(options.getSettings !== undefined ? { getSettings: options.getSettings } : {}),
     });
     this.panel = new PracticePanel({
       storage,
@@ -63,13 +72,17 @@ export class PracticeController {
         this.bindProject(bankId, qid, learning);
         await this.projectManager.open({ bankId, question });
       },
+      onOpenNote: async (bankId, qid, learning, mode) => {
+        await this.openNote(bankId, qid, learning, mode);
+      },
+      ...(options.getSettings !== undefined ? { getSettings: options.getSettings } : {}),
       ...(options.onLearningChanged !== undefined
         ? { onLearningChanged: options.onLearningChanged }
         : {}),
     });
 
     this.saveSubscription = vscode.workspace.onDidSaveTextDocument((doc) => {
-      this.onDocumentChange(doc.uri);
+      this.onDocumentSave(doc);
     });
 
     this.changeSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
@@ -88,8 +101,10 @@ export class PracticeController {
     const question = bank.questions.find((q) => q.id === qid);
     if (!question) return;
 
-    this.bindProject(bankId, qid, learning);
-    await this.projectManager.open({ bankId, question }, { directIfExists: true });
+    if (this.settings().practice.openAnswerFileOnQuestionOpen) {
+      this.bindProject(bankId, qid, learning);
+      await this.projectManager.open({ bankId, question }, { directIfExists: true });
+    }
     // 先固定作答文件到左侧，再创建/聚焦右侧题目面板，避免 VS Code 复用同一编辑器组。
     this.panel.createOrShow(bankId, qid, question, learning, vscode.ViewColumn.Two);
   }
@@ -164,7 +179,7 @@ export class PracticeController {
     learning: Map<string, import('../types/learning.js').LearningState>,
   ): void {
     const root = this.storage.userData.getQuestionProjectUri(bankId, qid).toString();
-    this.projectBindings.set(root, { bankId, qid, learning });
+    this.projectBindings.set(root, { bankId, qid, kind: 'project', learning });
   }
 
   private clearProjectBindings(bankId: string, qid: string): void {
@@ -204,17 +219,8 @@ export class PracticeController {
 
   private onDocumentChange(uri: vscode.Uri): void {
     const uriKey = uri.toString();
-    let binding = this.uriBindings.get(uriKey);
-    if (!binding) {
-      for (const [root, candidate] of this.projectBindings) {
-        const prefix = root.endsWith('/') ? root : `${root}/`;
-        if (uriKey.startsWith(prefix)) {
-          binding = candidate;
-          break;
-        }
-      }
-    }
-    if (!binding) return;
+    const binding = this.findBinding(uriKey);
+    if (!binding || binding.kind !== 'project') return;
 
     // Debounce: schedule lastPracticedAt update
     const existing = this.debounceTimers.get(uriKey);
@@ -235,7 +241,11 @@ export class PracticeController {
     // A removed/replaced bank must not be recreated by a delayed editor event.
     if (!this.storage.getCurrentMeta().banks.some((bank) => bank.id === bankId)) return;
     const prev = getOrDefault(learning.get(qid));
-    const next = { ...prev, lastPracticedAt: Date.now() };
+    const mastery =
+      this.settings().practice.autoMarkLearningOnEdit && prev.mastery === 'unlearned'
+        ? 'learning'
+        : prev.mastery;
+    const next = { ...prev, mastery, lastPracticedAt: Date.now() };
 
     const result = await this.storage.writeWithRollback({
       prev,
@@ -245,6 +255,78 @@ export class PracticeController {
       onRollback: (v) => { learning.set(qid, v); },
       path: 'learning.json',
     });
-    if (result.ok) this.options.onLearningChanged?.(bankId, qid);
+    if (result.ok) {
+      this.panel.postMessage(bankId, qid, { type: 'refreshLearning', payload: next });
+      this.options.onLearningChanged?.(bankId, qid);
+    }
+  }
+
+  private onDocumentSave(document: vscode.TextDocument): void {
+    const binding = this.findBinding(document.uri.toString());
+    if (!binding) return;
+    if (binding.kind === 'note') {
+      void this.updateNoteState(binding, document.getText().trim().length > 0);
+      return;
+    }
+    this.onDocumentChange(document.uri);
+  }
+
+  private findBinding(uriKey: string): OpenDocumentBinding | undefined {
+    const direct = this.uriBindings.get(uriKey);
+    if (direct) return direct;
+    for (const [root, candidate] of this.projectBindings) {
+      const prefix = root.endsWith('/') ? root : `${root}/`;
+      if (uriKey.startsWith(prefix)) return candidate;
+    }
+    return undefined;
+  }
+
+  private async openNote(
+    bankId: string,
+    qid: string,
+    learning: Map<string, import('../types/learning.js').LearningState>,
+    mode: NoteOpenMode,
+  ): Promise<void> {
+    const noteUri = await this.storage.userData.ensurePracticeFile(
+      bankId,
+      qid,
+      'note',
+      '.md',
+      '',
+    );
+    this.uriBindings.set(noteUri.toString(), { bankId, qid, kind: 'note', learning });
+    const document = await vscode.workspace.openTextDocument(noteUri);
+    await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+    if (mode === 'preview') {
+      await vscode.commands.executeCommand('markdown.showPreview');
+    }
+  }
+
+  private async updateNoteState(
+    binding: OpenDocumentBinding,
+    hasNote: boolean,
+  ): Promise<void> {
+    const { bankId, qid, learning } = binding;
+    if (!this.storage.getCurrentMeta().banks.some((bank) => bank.id === bankId)) return;
+    const prev = getOrDefault(learning.get(qid));
+    if (prev.hasNote === hasNote) return;
+    const next = { ...prev, hasNote };
+
+    const result = await this.storage.writeWithRollback({
+      prev,
+      next,
+      applyMemory: (value) => { learning.set(qid, value); },
+      persist: () => this.storage.userData.writeLearningState(bankId, qid, next),
+      onRollback: (value) => { learning.set(qid, value); },
+      path: 'learning.json',
+    });
+    if (result.ok) {
+      this.panel.postMessage(bankId, qid, { type: 'refreshLearning', payload: next });
+      this.options.onLearningChanged?.(bankId, qid);
+    }
+  }
+
+  private settings(): ForgeQSettings {
+    return this.options.getSettings?.() ?? DEFAULT_FORGEQ_SETTINGS;
   }
 }

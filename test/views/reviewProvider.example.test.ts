@@ -56,6 +56,8 @@ import { ReviewProvider } from '../../src/views/reviewProvider.js';
 import type { QuestionBank } from '../../src/types/question.js';
 // eslint-disable-next-line import/first
 import type { LearningState } from '../../src/types/learning.js';
+// eslint-disable-next-line import/first
+import { DEFAULT_FORGEQ_SETTINGS } from '../../src/config/settings.js';
 
 const bank: QuestionBank = {
   name: 'Test',
@@ -248,5 +250,40 @@ describe('ReviewProvider example', () => {
       expect(item.description).toBeUndefined();
       expect(item.tooltip).toBe('Q1');
     }
+  });
+
+  it('按设置限制单轮复习题数，并保持本轮集合稳定', () => {
+    const provider = new ReviewProvider(undefined, {
+      getSettings: () => ({
+        ...DEFAULT_FORGEQ_SETTINGS,
+        review: { shuffle: false, maxQuestions: 1 },
+      }),
+    });
+    const learning = new Map<string, LearningState>([
+      ['q1', { mastery: 'not_mastered', favoriteFlag: false, wrongFlag: false, hasNote: false }],
+      ['q2', { mastery: 'not_mastered', favoriteFlag: false, wrongFlag: false, hasNote: false }],
+    ]);
+    provider.setBank(bank, learning);
+    provider.enter('unmastered');
+
+    const entry = provider.getChildren(undefined).find(
+      (node) => node.kind === 'entry' && node.reviewKind === 'unmastered',
+    )!;
+    const firstRound = provider.getChildren(entry);
+    expect(firstRound).toHaveLength(1);
+
+    learning.set('q1', {
+      mastery: 'mastered',
+      favoriteFlag: false,
+      wrongFlag: false,
+      hasNote: false,
+    });
+    const currentIds = provider.getChildren(entry)
+      .filter((node) => node.kind === 'question')
+      .map((node) => node.kind === 'question' ? node.question.id : '');
+    const firstRoundIds = firstRound
+      .filter((node) => node.kind === 'question')
+      .map((node) => node.kind === 'question' ? node.question.id : '');
+    expect(currentIds).toEqual(firstRoundIds);
   });
 });

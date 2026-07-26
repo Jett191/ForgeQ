@@ -4,6 +4,11 @@
 
 import * as vscode from 'vscode';
 
+import {
+  DEFAULT_FORGEQ_SETTINGS,
+  type DefaultProjectFile,
+  type ForgeQSettings,
+} from '../config/settings.js';
 import type { Storage } from '../storage/storage.js';
 import type { QuestionProjectFile } from '../storage/userDataStore.js';
 import type { Question } from '../types/question.js';
@@ -25,6 +30,7 @@ export interface QuestionProjectContext {
 
 export interface QuestionProjectManagerOptions {
   onFileOpened?: (uri: vscode.Uri, bankId: string, qid: string) => void;
+  getSettings?: () => ForgeQSettings;
 }
 
 export interface QuestionProjectOpenOptions {
@@ -35,6 +41,8 @@ export interface QuestionProjectOpenOptions {
 const PRESET_FILES: ReadonlyArray<{ label: string; description: string; fileName: string }> = [
   { label: '$(file-code) JavaScript 文件', description: '创建 index.js', fileName: 'index.js' },
   { label: '$(file-code) JSX 文件', description: '创建 App.jsx', fileName: 'App.jsx' },
+  { label: '$(file-code) TypeScript 文件', description: '创建 index.ts', fileName: 'index.ts' },
+  { label: '$(file-code) TSX 文件', description: '创建 App.tsx', fileName: 'App.tsx' },
   { label: '$(file-code) Java 文件', description: '创建 Main.java', fileName: 'Main.java' },
   { label: '$(file-code) Go 文件', description: '创建 main.go', fileName: 'main.go' },
   { label: '$(file-code) C 文件', description: '创建 main.c', fileName: 'main.c' },
@@ -142,6 +150,15 @@ export class QuestionProjectManager {
     root: vscode.Uri,
     context: QuestionProjectContext,
   ): Promise<void> {
+    const configuredFile = defaultFileName(
+      this.settings().practice.defaultProjectFile,
+      context.question,
+    );
+    if (configuredFile !== undefined) {
+      await this.createInitialFile(context, configuredFile);
+      return;
+    }
+
     const presets: InitialPickItem[] = PRESET_FILES.map((preset) => ({
       label: preset.label,
       description: preset.description,
@@ -174,16 +191,11 @@ export class QuestionProjectManager {
       return;
     }
     if (picked.action === 'custom') {
-      await this.createCustomFile(context);
+      await this.createCustomFile(context, true);
       return;
     }
     if (picked.fileName) {
-      const uri = await this.storage.userData.ensureQuestionProjectFile(
-        context.bankId,
-        context.question.id,
-        picked.fileName,
-      );
-      await this.openFile(uri, context.bankId, context.question.id);
+      await this.createInitialFile(context, picked.fileName);
     }
   }
 
@@ -202,7 +214,10 @@ export class QuestionProjectManager {
     }
   }
 
-  private async createCustomFile(context: QuestionProjectContext): Promise<void> {
+  private async createCustomFile(
+    context: QuestionProjectContext,
+    useQuestionTemplate = false,
+  ): Promise<void> {
     const fileName = await vscode.window.showInputBox({
       title: '新建题目项目文件',
       prompt: '输入文件名或相对路径，例如 index.js、App.jsx、src/utils.js',
@@ -211,12 +226,51 @@ export class QuestionProjectManager {
     });
     if (!fileName) return;
 
-    const uri = await this.storage.userData.ensureQuestionProjectFile(
-      context.bankId,
-      context.question.id,
-      fileName,
-    );
+    const initialContent = useQuestionTemplate ? this.initialContent(context.question) : '';
+    const uri = initialContent.length > 0
+      ? await this.storage.userData.ensureQuestionProjectFile(
+          context.bankId,
+          context.question.id,
+          fileName,
+          initialContent,
+        )
+      : await this.storage.userData.ensureQuestionProjectFile(
+          context.bankId,
+          context.question.id,
+          fileName,
+        );
     await this.openFile(uri, context.bankId, context.question.id);
+  }
+
+  private async createInitialFile(
+    context: QuestionProjectContext,
+    fileName: string,
+  ): Promise<void> {
+    const initialContent = this.initialContent(context.question);
+    const uri = initialContent.length > 0
+      ? await this.storage.userData.ensureQuestionProjectFile(
+          context.bankId,
+          context.question.id,
+          fileName,
+          initialContent,
+        )
+      : await this.storage.userData.ensureQuestionProjectFile(
+          context.bankId,
+          context.question.id,
+          fileName,
+        );
+    await this.openFile(uri, context.bankId, context.question.id);
+  }
+
+  private initialContent(question: Question): string {
+    if (!this.settings().practice.prefillFromQuestionTemplate || question.type !== 'code') {
+      return '';
+    }
+    return question.initialCode ?? question.codeTemplate ?? '';
+  }
+
+  private settings(): ForgeQSettings {
+    return this.options.getSettings?.() ?? DEFAULT_FORGEQ_SETTINGS;
   }
 
   /**
@@ -276,6 +330,56 @@ export class QuestionProjectManager {
       preview: false,
       preserveFocus: false,
     });
+  }
+}
+
+const CONFIGURED_FILE_NAMES: Readonly<Record<Exclude<DefaultProjectFile, 'ask' | 'auto'>, string>> = {
+  javascript: 'index.js',
+  jsx: 'App.jsx',
+  typescript: 'index.ts',
+  tsx: 'App.tsx',
+  java: 'Main.java',
+  go: 'main.go',
+  c: 'main.c',
+  python: 'main.py',
+  markdown: 'answer.md',
+};
+
+function defaultFileName(setting: DefaultProjectFile, question: Question): string | undefined {
+  if (setting === 'ask') return undefined;
+  if (setting !== 'auto') return CONFIGURED_FILE_NAMES[setting];
+  if (question.type === 'qa') return 'answer.md';
+
+  switch (question.language?.trim().toLowerCase()) {
+    case 'jsx':
+    case 'react':
+      return 'App.jsx';
+    case 'typescript':
+    case 'ts':
+      return 'index.ts';
+    case 'tsx':
+      return 'App.tsx';
+    case 'java':
+      return 'Main.java';
+    case 'go':
+    case 'golang':
+      return 'main.go';
+    case 'c':
+      return 'main.c';
+    case 'python':
+    case 'py':
+      return 'main.py';
+    case 'html':
+      return 'index.html';
+    case 'css':
+      return 'styles.css';
+    case 'markdown':
+    case 'md':
+      return 'answer.md';
+    case 'javascript':
+    case 'js':
+    default:
+      return 'index.js';
   }
 }
 

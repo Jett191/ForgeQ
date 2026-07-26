@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "./src/practice/webview",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": [
+    "src/practice/webview/main.ts",
+    "src/practice/webview/markdown.ts",
+    "src/practice/webview/highlight.ts"
+  ],
+  "exclude": []
+}

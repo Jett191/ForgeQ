@@ -66,4 +66,20 @@ describe('buildQuestionPlainText', () => {
     expect(text).toContain('【我的笔记】\n（无）');
     expect(text).toContain('最近练习时间：（无）');
   });
+
+  it('可按用户设置省略参考答案和原始 JSON', () => {
+    const text = buildQuestionPlainText(
+      QUESTION,
+      [],
+      LEARNING,
+      undefined,
+      { includeReferenceAnswer: false, includeRawQuestionJson: false },
+    );
+
+    expect(text).not.toContain('【参考答案】');
+    expect(text).not.toContain('参考代码：');
+    expect(text).not.toContain('【题目原始 JSON】');
+    expect(text).toContain('【我的答案】');
+    expect(text).toContain('【学习状态】');
+  });
 });

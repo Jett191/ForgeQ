@@ -48,7 +48,8 @@
     "onCommand:frontendInterview.filter.byCategory",
     "onCommand:frontendInterview.filter.byDifficulty",
     "onCommand:frontendInterview.filter.clear",
-    "onCommand:frontendInterview.toggleGroupByCategory"
+    "onCommand:frontendInterview.toggleGroupByCategory",
+    "onCommand:frontendInterview.openSettings"
   ],
   "contributes": {
     "viewsContainers": {
@@ -151,6 +152,12 @@
         "title": "切换分类分组",
         "category": "ForgeQ",
         "icon": "$(group-by-ref-type)"
+      },
+      {
+        "command": "frontendInterview.openSettings",
+        "title": "打开设置",
+        "category": "ForgeQ",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -195,6 +202,9 @@
         },
         {
           "command": "frontendInterview.toggleGroupByCategory"
+        },
+        {
+          "command": "frontendInterview.openSettings"
         }
       ],
       "view/item/context": [
@@ -251,6 +261,11 @@
           "group": "1_bank@3"
         },
         {
+          "command": "frontendInterview.openSettings",
+          "when": "view == frontendInterview.questionList",
+          "group": "1_bank@4"
+        },
+        {
           "command": "frontendInterview.review.unmastered",
           "when": "view == frontendInterview.review",
           "group": "navigation@1"
@@ -264,8 +279,151 @@
           "command": "frontendInterview.review.wrong",
           "when": "view == frontendInterview.review",
           "group": "navigation@3"
+        },
+        {
+          "command": "frontendInterview.openSettings",
+          "when": "view == frontendInterview.review",
+          "group": "navigation@4"
         }
       ]
+    },
+    "configuration": {
+      "title": "ForgeQ",
+      "properties": {
+        "forgeq.practice.autoMarkLearningOnEdit": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 10,
+          "description": "首次编辑或保存作答文件时，自动把“未学习”更新为“学习中”。"
+        },
+        "forgeq.practice.openAnswerFileOnQuestionOpen": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 20,
+          "description": "从题目列表打开题目时，同时创建或打开作答文件；关闭后只打开题目面板，仍可通过面板中的项目按钮手动打开。"
+        },
+        "forgeq.practice.prefillFromQuestionTemplate": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 30,
+          "description": "首次创建代码作答文件时，使用题目的 initialCode 或 codeTemplate 作为初始内容。"
+        },
+        "forgeq.practice.defaultProjectFile": {
+          "type": "string",
+          "default": "ask",
+          "scope": "window",
+          "order": 40,
+          "enum": [
+            "ask",
+            "auto",
+            "javascript",
+            "jsx",
+            "typescript",
+            "tsx",
+            "java",
+            "go",
+            "c",
+            "python",
+            "markdown"
+          ],
+          "enumDescriptions": [
+            "每道新题都询问要创建的文件。",
+            "根据题型和 language 字段自动选择。",
+            "创建 index.js。",
+            "创建 App.jsx。",
+            "创建 index.ts。",
+            "创建 App.tsx。",
+            "创建 Main.java。",
+            "创建 main.go。",
+            "创建 main.c。",
+            "创建 main.py。",
+            "创建 answer.md。"
+          ],
+          "description": "新题目项目的默认作答文件类型。"
+        },
+        "forgeq.practice.revealAnswerOnOpen": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "order": 50,
+          "description": "打开题目面板后立即展开参考答案。建议练习时保持关闭。"
+        },
+        "forgeq.practice.noteOpenMode": {
+          "type": "string",
+          "default": "editor",
+          "scope": "window",
+          "order": 60,
+          "enum": ["editor", "preview"],
+          "enumDescriptions": [
+            "在 Markdown 编辑器中打开笔记。",
+            "打开笔记并显示 Markdown 预览。"
+          ],
+          "description": "点击题目面板中的笔记按钮时采用的打开方式。"
+        },
+        "forgeq.display.showKeywords": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 100,
+          "description": "在参考答案中显示题目关键词和答题点。"
+        },
+        "forgeq.display.showCodeDetails": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 110,
+          "description": "在代码题参考答案中显示参考代码、测试用例和解题说明。"
+        },
+        "forgeq.display.groupByCategory": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 120,
+          "description": "题目列表默认按分类分组。工具栏中的分组按钮会更新本设置。"
+        },
+        "forgeq.review.shuffle": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "order": 200,
+          "description": "每次进入复习集合时随机排列题目，并在本轮复习中保持顺序稳定。"
+        },
+        "forgeq.review.maxQuestions": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 10000,
+          "scope": "window",
+          "order": 210,
+          "description": "每轮复习最多包含的题目数；0 表示不限制。"
+        },
+        "forgeq.copy.includeReferenceAnswer": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 300,
+          "description": "“复制给 AI”时包含参考答案、参考代码、测试用例和追问。"
+        },
+        "forgeq.copy.includeRawQuestionJson": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 310,
+          "description": "“复制给 AI”时附加题目的原始 JSON。关闭可缩短复制内容。"
+        },
+        "forgeq.data.trashRetentionDays": {
+          "type": "integer",
+          "default": 7,
+          "minimum": 1,
+          "maximum": 365,
+          "scope": "application",
+          "order": 400,
+          "description": "已移除题库在本地回收站中的保留天数。"
+        }
+      }
     }
   },
   "scripts": {
@@ -276,7 +434,7 @@
     "test:unit": "vitest run --config vitest.config.ts",
     "test:bench": "vitest bench --run --config vitest.config.ts",
     "test:integration": "node scripts/runIntegrationTests.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
     "package": "node scripts/package.mjs"
   },
   "dependencies": {

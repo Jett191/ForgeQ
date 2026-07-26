@@ -11,6 +11,7 @@ ForgeQ 是一款通用的本地题库练习扩展。无论是编程、面试准�
 - **本地题库**：导入一个或多个 JSON 题库，随时切换；导入时自动校验格式、字段和题目 ID。
 - **沉浸练习**：题目与编辑器并排显示，代码题可直接使用 VS Code 的补全、格式化和语法高亮。
 - **问答复习**：先独立思考，再展开参考答案、关键词、详细解析和追问。
+- **完整代码题信息**：可展示参考代码、测试用例和解题说明，并用题目模板初始化作答文件。
 - **图片题目**：题干和答案支持通过 Markdown 嵌入 HTTPS 图片。
 - **数学公式**：题干和答案支持 `$...$` 行内公式与 `$$...$$` 展示公式，并由 KaTeX 渲染。
 - **学习记录**：为题目添加 Markdown 笔记，标记收藏、错题和掌握状态。
@@ -56,6 +57,7 @@ ForgeQ 支持同时保存多个题库。题目列表顶部提供导入、切换�
 打开代码题时，ForgeQ 会在题目专属目录中创建练习文件，并将编辑器与题目面板并排打开。文件后缀由题目的 `language` 字段决定；已有作答会被直接打开，不会被模板覆盖。
 
 题目面板可展示题干、测试用例、参考代码和解题说明，具体内容取决于题库提供的字段。
+首次创建作答文件时，ForgeQ 默认使用 `initialCode`，缺省时回退到 `codeTemplate`。也可以在设置中关闭模板预填，或指定默认创建 JavaScript、TypeScript、Java、Go、C、Python、Markdown 等文件。
 
 ### 问答题
 
@@ -74,6 +76,8 @@ ForgeQ 支持同时保存多个题库。题目列表顶部提供导入、切换�
 
 收藏和错题是独立标记，可以随时切换。删除作答文件不会删除笔记或学习状态。
 
+题目面板标题右侧提供个人笔记按钮。笔记使用独立 Markdown 文件保存；保存非空笔记后，题目列表会显示笔记标记。默认情况下，首次编辑或保存作答文件会把“未学习”自动更新为“学习中”。
+
 ### 复制给 AI
 
 点击题目标题右侧的复制按钮，即可将当前题目的完整上下文写入系统剪贴板。内容采用分区纯文本格式，包含题目信息、题干、参考答案、全部作答文件、个人笔记、学习状态和题目原始 JSON，可直接粘贴到 AI 对话中继续提问。
@@ -85,6 +89,7 @@ ForgeQ 支持同时保存多个题库。题目列表顶部提供导入、切换�
 - **错题**：复习所有带错题标记的题目。
 
 进入复习模式时会生成当前题目快照，因此练习过程中修改状态不会打乱本轮列表。
+你可以在设置中随机排列复习题目，或限制每轮最多包含的题目数。
 
 ## 题库格式
 
@@ -164,8 +169,30 @@ ForgeQ 支持同时保存多个题库。题目列表顶部提供导入、切换�
 | `ForgeQ: 复习未掌握` | 生成未掌握复习集 |
 | `ForgeQ: 复习收藏` | 生成收藏复习集 |
 | `ForgeQ: 复习错题` | 生成错题复习集 |
+| `ForgeQ: 打开设置` | 打开 ForgeQ 用户设置 |
 
 扩展没有预设快捷键。可以打开 **首选项 > 键盘快捷方式**，搜索 `ForgeQ` 后自行绑定。
+
+## 用户设置
+
+点击题目或复习视图标题栏中的齿轮，或运行 **ForgeQ: 打开设置**，可以调整以下行为：
+
+| 设置 | 默认值 | 作用 |
+| --- | --- | --- |
+| `forgeq.practice.autoMarkLearningOnEdit` | `true` | 首次编辑作答时自动标记为学习中 |
+| `forgeq.practice.openAnswerFileOnQuestionOpen` | `true` | 打开题目时同时打开作答文件 |
+| `forgeq.practice.prefillFromQuestionTemplate` | `true` | 使用 `initialCode` / `codeTemplate` 初始化代码文件 |
+| `forgeq.practice.defaultProjectFile` | `ask` | 询问或自动选择新题目的作答文件类型 |
+| `forgeq.practice.revealAnswerOnOpen` | `false` | 打开题目后立即展开参考答案 |
+| `forgeq.practice.noteOpenMode` | `editor` | 使用编辑器或 Markdown 预览打开个人笔记 |
+| `forgeq.display.showKeywords` | `true` | 在答案中显示关键词与答题点 |
+| `forgeq.display.showCodeDetails` | `true` | 显示参考代码、测试用例和解题说明 |
+| `forgeq.display.groupByCategory` | `true` | 默认按分类分组题目列表 |
+| `forgeq.review.shuffle` | `false` | 每轮复习随机排列并保持顺序稳定 |
+| `forgeq.review.maxQuestions` | `0` | 限制每轮题数；`0` 表示不限 |
+| `forgeq.copy.includeReferenceAnswer` | `true` | 复制给 AI 时包含参考答案 |
+| `forgeq.copy.includeRawQuestionJson` | `true` | 复制给 AI 时包含题目原始 JSON |
+| `forgeq.data.trashRetentionDays` | `7` | 设置已移除题库的本地保留天数 |
 
 ## 数据与隐私
 

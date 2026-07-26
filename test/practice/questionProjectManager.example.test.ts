@@ -32,6 +32,8 @@ vi.mock('vscode', () => ({
 // eslint-disable-next-line import/first
 import { QuestionProjectManager } from '../../src/practice/questionProjectManager.js';
 // eslint-disable-next-line import/first
+import { DEFAULT_FORGEQ_SETTINGS } from '../../src/config/settings.js';
+// eslint-disable-next-line import/first
 import type { CodeQuestion } from '../../src/types/question.js';
 
 const root = { path: '/projects/q1', fsPath: '/projects/q1', toString: () => 'file:/projects/q1' };
@@ -58,7 +60,7 @@ function createStorage(files: Array<{ relativePath: string; uri: ReturnType<type
     userData: {
       ensureQuestionProject: vi.fn(async () => root),
       listQuestionProjectFiles: vi.fn(async () => files),
-      ensureQuestionProjectFile: vi.fn(async (_bankId, _qid, path) => fileUri(path)),
+      ensureQuestionProjectFile: vi.fn(async (_bankId, _qid, path, _init?: string) => fileUri(path)),
       readPracticeContent: vi.fn(async () => undefined),
     },
   };
@@ -93,7 +95,7 @@ describe('QuestionProjectManager example', () => {
     });
   });
 
-  it('首次创建列表使用 JS、JSX、Java、Go、C、Python 和 Markdown 预设', async () => {
+  it('首次创建列表提供常用前端、后端和 Markdown 预设', async () => {
     const storage = createStorage();
     let shownItems: Array<{ fileName?: string }> = [];
     mocks.showQuickPick.mockImplementation(async (items: Array<{ fileName?: string }>) => {
@@ -107,12 +109,59 @@ describe('QuestionProjectManager example', () => {
     expect(shownItems.flatMap((item) => (item.fileName ? [item.fileName] : []))).toEqual([
       'index.js',
       'App.jsx',
+      'index.ts',
+      'App.tsx',
       'Main.java',
       'main.go',
       'main.c',
       'main.py',
       'answer.md',
     ]);
+  });
+
+  it('首次创建代码文件时使用 initialCode 预填内容', async () => {
+    const storage = createStorage();
+    mocks.showQuickPick.mockImplementation(async (items: Array<{ fileName?: string }>) =>
+      items.find((item) => item.fileName === 'index.js'),
+    );
+    const manager = new QuestionProjectManager(storage as never);
+
+    await manager.open({
+      bankId: 'bank-1',
+      question: { ...question, initialCode: 'export function solve() {}' },
+    });
+
+    expect(storage.userData.ensureQuestionProjectFile).toHaveBeenCalledWith(
+      'bank-1',
+      'q1',
+      'index.js',
+      'export function solve() {}',
+    );
+  });
+
+  it('默认文件设为 auto 时根据 language 直接创建，不弹选择框', async () => {
+    const storage = createStorage();
+    const manager = new QuestionProjectManager(storage as never, {
+      getSettings: () => ({
+        ...DEFAULT_FORGEQ_SETTINGS,
+        practice: {
+          ...DEFAULT_FORGEQ_SETTINGS.practice,
+          defaultProjectFile: 'auto',
+        },
+      }),
+    });
+
+    await manager.open({
+      bankId: 'bank-1',
+      question: { ...question, language: 'java' },
+    });
+
+    expect(mocks.showQuickPick).not.toHaveBeenCalled();
+    expect(storage.userData.ensureQuestionProjectFile).toHaveBeenCalledWith(
+      'bank-1',
+      'q1',
+      'Main.java',
+    );
   });
 
   it.each(['Main.java', 'main.go', 'main.c', 'main.py'])(

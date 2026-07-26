@@ -48,8 +48,20 @@ interface Question {
   tags: string[];
   difficulty: 'easy' | 'medium' | 'hard' | string;
   answer: string;
+  language?: string;
+  keywords?: string[];
   followUps?: Array<{ question: string; answer?: string }>;
 }
+
+interface PracticePreferences {
+  revealAnswerOnOpen: boolean;
+}
+
+const defaultPreferences: PracticePreferences = {
+  revealAnswerOnOpen: false,
+};
+
+let preferences = defaultPreferences;
 
 const vscode = acquireVsCodeApi();
 
@@ -145,7 +157,7 @@ function masteryIcon(m: string): string {
     case 'not_mastered':
       return '◔';
     case 'learning':
-      return '◔';
+      return '◑';
     case 'unlearned':
     default:
       return '○';
@@ -214,6 +226,13 @@ function updateLearningUI(learning: LearningState): void {
     favBtn.setAttribute('title', learning.favoriteFlag ? '取消收藏' : '收藏');
   }
 
+  const noteBtn = $('btn-open-note');
+  if (noteBtn) {
+    noteBtn.classList.toggle('active', learning.hasNote);
+    noteBtn.setAttribute('aria-label', learning.hasNote ? '编辑个人笔记' : '新建个人笔记');
+    noteBtn.setAttribute('title', learning.hasNote ? '编辑个人笔记' : '新建个人笔记');
+  }
+
   // 掌握状态按钮的 active class（learning 仅为旧数据兼容，不再提供按钮）
   const masteryValues = ['unlearned', 'learning', 'mastered', 'not_mastered'];
   for (const m of masteryValues) {
@@ -251,9 +270,50 @@ interface AnswerPayload {
       kind: 'reference';
         briefAnswer?: string;
         detailedAnswer?: string;
+        keywords?: readonly string[];
+        language?: string;
+        referenceCode?: string;
+        testCases?: ReadonlyArray<{
+          name?: string;
+          input?: string;
+          expected?: string;
+          description?: string;
+        }>;
+        solutionExplanation?: string;
         followUps?: Array<{ question: string; answer?: string }>;
       }
     | { kind: 'none'; hint: string };
+}
+
+function renderCodeBlock(code: string, language?: string): string {
+  const longestRun = Math.max(0, ...Array.from(code.matchAll(/`+/g), (match) => match[0].length));
+  const fence = '`'.repeat(Math.max(3, longestRun + 1));
+  const safeLanguage = language?.trim().match(/^[a-z0-9_+-]+$/i)?.[0] ?? '';
+  return renderMarkdown(`${fence}${safeLanguage}\n${code}\n${fence}`);
+}
+
+function renderTestCases(
+  testCases: ReadonlyArray<{
+    name?: string;
+    input?: string;
+    expected?: string;
+    description?: string;
+  }>,
+): string {
+  return testCases.map((testCase, index) => {
+    const name = testCase.name?.trim() || `用例 ${index + 1}`;
+    let body = `<div class="test-case-head">${escapeHtml(name)}</div>`;
+    if (testCase.description) {
+      body += `<div class="test-case-description md">${renderMarkdown(testCase.description)}</div>`;
+    }
+    if (testCase.input !== undefined) {
+      body += `<div class="test-case-row"><span>输入</span><code>${escapeHtml(testCase.input)}</code></div>`;
+    }
+    if (testCase.expected !== undefined) {
+      body += `<div class="test-case-row"><span>预期</span><code>${escapeHtml(testCase.expected)}</code></div>`;
+    }
+    return `<article class="test-case">${body}</article>`;
+  }).join('');
 }
 
 function showAnswer(payload: AnswerPayload): void {
@@ -273,8 +333,22 @@ function showAnswer(payload: AnswerPayload): void {
     if (ans.briefAnswer) {
       html += `<div class="brief md">${renderMarkdown(ans.briefAnswer)}</div>`;
     }
+    if (ans.keywords?.length) {
+      html += '<section class="answer-section"><h3>关键词与答题点</h3><div class="keyword-list">';
+      html += ans.keywords.map((keyword) => `<span class="keyword-chip">${escapeHtml(keyword)}</span>`).join('');
+      html += '</div></section>';
+    }
     if (ans.detailedAnswer) {
-      html += `<div class="detailed md"><h3>详细解析</h3>${renderMarkdown(ans.detailedAnswer)}</div>`;
+      html += `<section class="answer-section detailed md"><h3>详细解析</h3>${renderMarkdown(ans.detailedAnswer)}</section>`;
+    }
+    if (ans.referenceCode) {
+      html += `<section class="answer-section"><h3>参考代码</h3><div class="md">${renderCodeBlock(ans.referenceCode, ans.language)}</div></section>`;
+    }
+    if (ans.testCases?.length) {
+      html += `<section class="answer-section"><h3>测试用例</h3><div class="test-case-list">${renderTestCases(ans.testCases)}</div></section>`;
+    }
+    if (ans.solutionExplanation) {
+      html += `<section class="answer-section md"><h3>解题说明</h3>${renderMarkdown(ans.solutionExplanation)}</section>`;
     }
     content.innerHTML = html;
   }
@@ -329,6 +403,10 @@ function showStatus(msg: string): void {
 document.addEventListener('DOMContentLoaded', () => {
   $('btn-open-project')?.addEventListener('click', () => {
     vscode.postMessage({ type: 'openProject' });
+  });
+
+  $('btn-open-note')?.addEventListener('click', () => {
+    vscode.postMessage({ type: 'openNote' });
   });
 
   $('btn-share-markdown')?.addEventListener('click', () => {
@@ -397,9 +475,17 @@ window.addEventListener('message', (event) => {
   const msg = event.data as HostToWebviewMessage;
   switch (msg.type) {
     case 'init': {
-      const payload = msg.payload as { question: Question; learning: LearningState };
+      const payload = msg.payload as {
+        question: Question;
+        learning: LearningState;
+        preferences?: PracticePreferences;
+      };
+      preferences = payload.preferences ?? defaultPreferences;
       renderQuestion(payload.question);
       updateLearningUI(payload.learning);
+      if (preferences.revealAnswerOnOpen) {
+        vscode.postMessage({ type: 'requestAnswer' });
+      }
       break;
     }
     case 'showAnswer': {

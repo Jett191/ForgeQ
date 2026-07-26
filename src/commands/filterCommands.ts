@@ -139,7 +139,19 @@ export function clearFilters(provider: QuestionListProvider): void {
   provider.setFilter({});
 }
 
-/** 切换分类分组显示。 */
-export function toggleGroupByCategory(provider: QuestionListProvider): void {
-  provider.setGroupByCategory(!provider.getGroupByCategory());
+/** 切换分类分组显示，并持久化为用户设置。 */
+export async function toggleGroupByCategory(provider: QuestionListProvider): Promise<void> {
+  const next = !provider.getGroupByCategory();
+  provider.setGroupByCategory(next);
+  try {
+    await vscode.workspace.getConfiguration('forgeq').update(
+      'display.groupByCategory',
+      next,
+      vscode.ConfigurationTarget.Global,
+    );
+  } catch (error) {
+    provider.setGroupByCategory(!next);
+    const reason = error instanceof Error ? error.message : String(error);
+    await vscode.window.showErrorMessage(`保存分组设置失败：${reason}`);
+  }
 }

@@ -23,6 +23,9 @@ export type HostToWebviewMessage =
         codeFileUri?: string;
         qaFileUri?: string;
         noteFileUri: string;
+        preferences: {
+          revealAnswerOnOpen: boolean;
+        };
       };
     }
   | { type: 'showAnswer'; payload: AnswerPayload }
@@ -58,6 +61,7 @@ export type WebviewToHostMessage =
   | { type: 'toggleWrong' }
   | { type: 'setMastery'; value: MasteryStatus }
   | { type: 'openProject' }
+  | { type: 'openNote' }
   | { type: 'shareMarkdown' }
   | { type: 'copyForAi' }
   | { type: 'openNativeEditor'; target: 'code' | 'qa' | 'note' }

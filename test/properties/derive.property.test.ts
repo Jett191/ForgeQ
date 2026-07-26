@@ -114,6 +114,37 @@ describe('统一题目答案派生', () => {
     });
   });
 
+  it('题目面板可按设置展示关键词、参考代码、测试用例和解题说明', () => {
+    const question: Question = {
+      id: 'complete-code',
+      type: 'code',
+      title: '完整代码题',
+      content: '',
+      category: 'JavaScript',
+      tags: [],
+      difficulty: 'medium',
+      answer: '',
+      language: 'javascript',
+      keywords: ['边界条件', '复杂度'],
+      referenceCode: 'return 42;',
+      testCases: [{ input: '[]', expected: '42' }],
+      solutionExplanation: '先处理边界条件。',
+    };
+
+    expect(deriveQuestionAnswer(question, {
+      includeKeywords: true,
+      includeCodeDetails: true,
+    })).toEqual({
+      kind: 'reference',
+      keywords: ['边界条件', '复杂度'],
+      language: 'javascript',
+      referenceCode: 'return 42;',
+      testCases: [{ input: '[]', expected: '42' }],
+      solutionExplanation: '先处理边界条件。',
+      followUps: [],
+    });
+  });
+
   it('只有 detailedAnswer 时仍能展示详细解析', () => {
     const question: Question = {
       id: 'detailed-only',

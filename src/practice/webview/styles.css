@@ -102,6 +102,8 @@ body {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: var(--pad-2);
 }
 
@@ -162,6 +164,12 @@ body {
   color: #f59e0b;
   border-color: rgba(245, 158, 11, 0.5);
   background: rgba(245, 158, 11, 0.12);
+}
+
+.q-note.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .q-fav .fav-icon::before {
@@ -473,7 +481,7 @@ body {
  * 圆形 icon-only 按钮的统一基础样式：
  *  - 答案区底部右下角的"收起答案" .btn-collapse
  *  - 学习状态主触发按钮 .mastery-trigger
- *  - 学习状态 4 个选项 .mastery-fab .seg
+ *  - 学习状态与错题选项 .mastery-fab .seg
  * 三者尺寸 / 圆角 / hover 行为统一，差异只在 active 配色。
  */
 .btn-collapse,
@@ -543,7 +551,7 @@ body {
   border-color: rgba(202, 138, 4, 0.5);
 }
 
-/* 4 个选项 active 时填充对应色（与原 4 段式同款配色逻辑） */
+/* 各状态 active 时填充对应色 */
 .mastery-fab .seg.active {
   color: #fff;
   border-color: transparent;
@@ -554,6 +562,10 @@ body {
 }
 
 .mastery-fab .seg[data-mastery='not_mastered'].active {
+  background: var(--med-fg);
+}
+
+.mastery-fab .seg[data-mastery='learning'].active {
   background: var(--med-fg);
 }
 
@@ -614,12 +626,87 @@ body {
   margin-bottom: 18px;
 }
 
+.answer-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.answer-section > h3,
 #answer-content .detailed h3 {
-  margin: 1.2em 0 0.6em;
-  font-size: 1.05em;
+  margin: 0 0 10px;
+  font-size: 0.82em;
+  font-weight: 650;
   color: var(--fg-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+}
+
+.keyword-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.keyword-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 9px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  font-size: 0.88em;
+}
+
+.test-case-list {
+  display: grid;
+  gap: 10px;
+}
+
+.test-case {
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.test-case-head {
+  padding: 8px 12px;
+  font-weight: 600;
+  background: var(--bg-code);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.test-case-description {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.test-case-row {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.test-case-row > span {
+  color: var(--fg-muted);
+  font-size: 0.88em;
+}
+
+.test-case-row > code {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, monospace);
+}
+
+#answer-content .detailed h3 {
+  margin-top: 0;
 }
 
 /* 答案里的 pre 也要带主题色边框（与 .md pre 共用） */

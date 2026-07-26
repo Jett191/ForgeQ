@@ -4,7 +4,7 @@
  * TreeDataProvider 实现，渲染三种复习入口及其题目列表。
  *
  * - 三个入口节点：复习未掌握 / 复习收藏 / 复习错题
- * - 每次读取列表时按最新 LearningState 调用 `buildReviewSet`
+ * - 默认按最新 LearningState 调用 `buildReviewSet`；启用随机或题数限制时固定本轮快照
  * - 空集合消息
  * - 单击触发 `frontendInterview.openQuestion` 命令
  * - 不受 FilterController 影响
@@ -15,6 +15,10 @@
 
 import * as vscode from 'vscode';
 
+import {
+  DEFAULT_FORGEQ_SETTINGS,
+  type ForgeQSettings,
+} from '../config/settings.js';
 import type { LearningState } from '../types/learning.js';
 import type { Question, QuestionBank } from '../types/question.js';
 import { buildReviewSet, type ReviewKind } from '../domain/reviewSetBuilder.js';
@@ -56,8 +60,12 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
   private _learningMap: ReadonlyMap<string, LearningState> = new Map();
   private _activeKind: ReviewKind | undefined;
   private _loadFailed = false;
+  private readonly _snapshots = new Map<ReviewKind, Question[]>();
 
-  constructor(private readonly _extensionUri?: vscode.Uri) {}
+  constructor(
+    private readonly _extensionUri?: vscode.Uri,
+    private readonly _options: { getSettings?: () => ForgeQSettings } = {},
+  ) {}
 
   /** 设置当前题库与学习状态 */
   setBank(
@@ -68,6 +76,7 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
     this._learningMap = learning;
     // 切换 bank 时重置当前入口
     this._activeKind = undefined;
+    this._snapshots.clear();
     this._loadFailed = false;
     this.refresh();
   }
@@ -76,6 +85,7 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
   setLoadFailed(): void {
     this._loadFailed = true;
     this._activeKind = undefined;
+    this._snapshots.clear();
     this.refresh();
   }
 
@@ -85,6 +95,24 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
       return;
     }
     this._activeKind = kind;
+    const settings = this.settings();
+    if (settings.review.shuffle || settings.review.maxQuestions > 0) {
+      this._snapshots.set(kind, this.buildConfiguredSet(kind));
+    } else {
+      this._snapshots.delete(kind);
+    }
+    this.refresh();
+  }
+
+  /** Rebuild active snapshots after a relevant setting changes. */
+  refreshSettings(): void {
+    this._snapshots.clear();
+    if (this._activeKind !== undefined && this._bank !== undefined) {
+      const settings = this.settings();
+      if (settings.review.shuffle || settings.review.maxQuestions > 0) {
+        this._snapshots.set(this._activeKind, this.buildConfiguredSet(this._activeKind));
+      }
+    }
     this.refresh();
   }
 
@@ -160,11 +188,8 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
       if (!this._bank) {
         return [{ kind: 'message', text: EMPTY_REVIEW_MESSAGE }];
       }
-      const currentSet = buildReviewSet(
-        this._bank.questions,
-        this._learningMap,
-        element.reviewKind,
-      );
+      const currentSet = this._snapshots.get(element.reviewKind)
+        ?? this.buildConfiguredSet(element.reviewKind);
       if (currentSet.length === 0) {
         return [{ kind: 'message', text: EMPTY_REVIEW_MESSAGE }];
       }
@@ -178,4 +203,29 @@ export class ReviewProvider implements vscode.TreeDataProvider<ReviewTreeItem> {
 
     return [];
   }
+
+  private buildConfiguredSet(kind: ReviewKind): Question[] {
+    if (!this._bank) return [];
+    const settings = this.settings();
+    const questions = buildReviewSet(this._bank.questions, this._learningMap, kind);
+    const ordered = settings.review.shuffle ? shuffledCopy(questions) : questions;
+    return settings.review.maxQuestions > 0
+      ? ordered.slice(0, settings.review.maxQuestions)
+      : ordered;
+  }
+
+  private settings(): ForgeQSettings {
+    return this._options.getSettings?.() ?? DEFAULT_FORGEQ_SETTINGS;
+  }
+}
+
+function shuffledCopy<T>(values: readonly T[]): T[] {
+  const result = values.slice();
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const current = result[index]!;
+    result[index] = result[swapIndex]!;
+    result[swapIndex] = current;
+  }
+  return result;
 }

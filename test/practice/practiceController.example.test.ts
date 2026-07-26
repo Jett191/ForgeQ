@@ -13,15 +13,17 @@ const createWebviewPanelCalls: unknown[] = [];
 const layoutCallOrder: string[] = [];
 const mockPostMessage = vi.fn();
 const changeTextDocumentHandlers: Array<(event: { document: { uri: unknown } }) => void> = [];
+const saveTextDocumentHandlers: Array<(document: { uri: unknown; getText: () => string }) => void> = [];
 const webviewMessageHandlers: Array<(message: unknown) => Promise<void>> = [];
 
-const { harness, showInformationMessage, showErrorMessage } = vi.hoisted(() => {
+const { harness, showInformationMessage, showErrorMessage, executeCommand } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require('../harness/memFsHarness.ts') as typeof import('../harness/memFsHarness.js');
   return {
     harness: mod.createMemFsHarness(),
     showInformationMessage: vi.fn(async () => undefined),
     showErrorMessage: vi.fn(async () => undefined),
+    executeCommand: vi.fn(async () => undefined),
   };
 });
 
@@ -75,7 +77,12 @@ vi.mock('vscode', () => {
         openTextDocumentCalls.push(uri);
         return { uri };
       },
-      onDidSaveTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidSaveTextDocument: vi.fn(
+        (handler: (document: { uri: unknown; getText: () => string }) => void) => {
+          saveTextDocumentHandlers.push(handler);
+          return { dispose: vi.fn() };
+        },
+      ),
       onDidChangeTextDocument: vi.fn((handler: (event: { document: { uri: unknown } }) => void) => {
         changeTextDocumentHandlers.push(handler);
         return { dispose: vi.fn() };
@@ -84,7 +91,7 @@ vi.mock('vscode', () => {
       updateWorkspaceFolders: vi.fn(() => true),
     },
     commands: {
-      executeCommand: vi.fn(),
+      executeCommand,
     },
   };
 });
@@ -97,6 +104,8 @@ import { PracticeController } from '../../src/practice/practiceController.js';
 import type { QuestionBank, CodeQuestion, QAQuestion } from '../../src/types/question.js';
 // eslint-disable-next-line import/first
 import { HarnessUri } from '../harness/memFsHarness.js';
+// eslint-disable-next-line import/first
+import { DEFAULT_FORGEQ_SETTINGS } from '../../src/config/settings.js';
 
 const CODE_QUESTION: CodeQuestion = {
   id: 'q-code-1',
@@ -135,8 +144,10 @@ describe('PracticeController open(qid)', () => {
     createWebviewPanelCalls.length = 0;
     layoutCallOrder.length = 0;
     changeTextDocumentHandlers.length = 0;
+    saveTextDocumentHandlers.length = 0;
     webviewMessageHandlers.length = 0;
     mockPostMessage.mockClear();
+    executeCommand.mockClear();
     showInformationMessage.mockClear();
     showErrorMessage.mockClear();
   });
@@ -261,6 +272,62 @@ describe('PracticeController open(qid)', () => {
     controller.dispose();
   });
 
+  it('关闭自动打开作答文件后只创建题目面板', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    const controller = new PracticeController(ctx as any, storage, state, {
+      getSettings: () => ({
+        ...DEFAULT_FORGEQ_SETTINGS,
+        practice: {
+          ...DEFAULT_FORGEQ_SETTINGS.practice,
+          openAnswerFileOnQuestionOpen: false,
+        },
+      }),
+    });
+
+    await controller.open('q-code-1');
+
+    expect(openTextDocumentCalls).toHaveLength(0);
+    expect(createWebviewPanelCalls).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it('应用答案自动展开和笔记预览设置', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    const controller = new PracticeController(ctx as any, storage, state, {
+      getSettings: () => ({
+        ...DEFAULT_FORGEQ_SETTINGS,
+        practice: {
+          ...DEFAULT_FORGEQ_SETTINGS.practice,
+          revealAnswerOnOpen: true,
+          noteOpenMode: 'preview',
+        },
+      }),
+    });
+
+    await controller.open('q-code-1');
+    await webviewMessageHandlers[0]!({ type: 'ready' });
+
+    expect(mockPostMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'init',
+      payload: expect.objectContaining({
+        preferences: { revealAnswerOnOpen: true },
+      }),
+    }));
+    await webviewMessageHandlers[0]!({ type: 'openNote' });
+    expect(executeCommand).toHaveBeenCalledWith('markdown.showPreview');
+    controller.dispose();
+  });
+
   it('删除答案会一次清理单文件或整个项目目录', async () => {
     const ctx = harness.createExtensionContext();
     (ctx as any).extensionUri = HarnessUri.file('/ext');
@@ -334,11 +401,43 @@ describe('PracticeController open(qid)', () => {
 
       expect(writeSpy).toHaveBeenCalledTimes(1);
       expect(oldLearning.get('q-code-1')?.lastPracticedAt).toEqual(expect.any(Number));
+      expect(oldLearning.get('q-code-1')?.mastery).toBe('learning');
       expect(newLearning.has('q-code-1')).toBe(false);
       controller.dispose();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('从题目面板打开并保存笔记后同步 hasNote', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    const onLearningChanged = vi.fn();
+    vi.spyOn(storage, 'writeWithRollback').mockImplementation(async (params) => {
+      params.applyMemory(params.next);
+      return { ok: true, value: undefined };
+    });
+    const controller = new PracticeController(ctx as any, storage, state, {
+      onLearningChanged,
+    });
+
+    await controller.open('q-code-1');
+    await webviewMessageHandlers[0]!({ type: 'openNote' });
+    const noteUri = openTextDocumentCalls.at(-1)!;
+    saveTextDocumentHandlers[0]!({ uri: noteUri, getText: () => '# 我的笔记' });
+
+    await vi.waitFor(() => {
+      expect(state.currentBank!.learning.get('q-code-1')?.hasNote).toBe(true);
+    });
+    expect(onLearningChanged).toHaveBeenCalledWith(
+      state.currentBank!.bankId,
+      'q-code-1',
+    );
+    controller.dispose();
   });
 
   it('收藏状态保存成功后通知外层刷新当前题库视图', async () => {
@@ -393,6 +492,26 @@ describe('PracticeController open(qid)', () => {
       mastery: 'not_mastered',
       wrongFlag: true,
     });
+    controller.dispose();
+  });
+
+  it('题目面板可以显式设置学习中状态', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    vi.spyOn(storage, 'writeWithRollback').mockImplementation(async (params) => {
+      params.applyMemory(params.next);
+      return { ok: true, value: undefined };
+    });
+    const controller = new PracticeController(ctx as any, storage, state);
+
+    await controller.open('q-code-1');
+    await webviewMessageHandlers[0]!({ type: 'setMastery', value: 'learning' });
+
+    expect(state.currentBank!.learning.get('q-code-1')?.mastery).toBe('learning');
     controller.dispose();
   });
 });

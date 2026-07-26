@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 
+import { readForgeQSettings } from './config/settings.js';
 import { removeBank, switchBank } from './commands/bankCommands.js';
 import {
   clearFilters,
@@ -30,10 +31,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
   const state = await storage.bootstrap();
 
   // 2. 实例化核心组件
+  const getSettings = readForgeQSettings;
+  const initialSettings = getSettings();
   const registry = new BankRegistry(storage, ctx.globalState);
-  const listProvider = new QuestionListProvider({ extensionUri: ctx.extensionUri });
-  const reviewProvider = new ReviewProvider(ctx.extensionUri);
+  const listProvider = new QuestionListProvider({
+    extensionUri: ctx.extensionUri,
+    groupByCategory: initialSettings.display.groupByCategory,
+  });
+  const reviewProvider = new ReviewProvider(ctx.extensionUri, { getSettings });
   const practiceController = new PracticeController(ctx, storage, state, {
+    getSettings,
     onLearningChanged: (bankId) => {
       if (state.currentBank?.bankId !== bankId) return;
       listProvider.refresh();
@@ -127,6 +134,36 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     () => toggleGroupByCategory(listProvider),
   );
 
+  const openSettingsCmd = vscode.commands.registerCommand(
+    'frontendInterview.openSettings',
+    () => vscode.commands.executeCommand(
+      'workbench.action.openSettings',
+      '@ext:Jett191.forgeq',
+    ),
+  );
+
+  const purgeTrash = (): void => {
+    const retentionMs = getSettings().data.trashRetentionDays * 24 * 3600 * 1000;
+    void storage.trash.purge({ olderThanMs: retentionMs }).catch(() => {
+      // Non-fatal; a later activation or setting change will retry.
+    });
+  };
+
+  const configurationSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration('forgeq.display.groupByCategory')) {
+      listProvider.setGroupByCategory(getSettings().display.groupByCategory);
+    }
+    if (
+      event.affectsConfiguration('forgeq.review.shuffle') ||
+      event.affectsConfiguration('forgeq.review.maxQuestions')
+    ) {
+      reviewProvider.refreshSettings();
+    }
+    if (event.affectsConfiguration('forgeq.data.trashRetentionDays')) {
+      purgeTrash();
+    }
+  });
+
   // 6. Push to subscriptions
   ctx.subscriptions.push(
     listView,
@@ -144,14 +181,13 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     filterByDifficultyCmd,
     clearFiltersCmd,
     toggleGroupCmd,
+    openSettingsCmd,
+    configurationSubscription,
     { dispose: () => practiceController.dispose() },
   );
 
   // 7. Async trash purge (non-blocking)
-  const sevenDays = 7 * 24 * 3600 * 1000;
-  void storage.trash.purge({ olderThanMs: sevenDays }).catch(() => {
-    // Non-fatal; ignore purge failure at startup.
-  });
+  purgeTrash();
 }
 
 export function deactivate(): void {
