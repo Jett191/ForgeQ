@@ -348,6 +348,83 @@ describe('PracticeController open(qid)', () => {
     controller.dispose();
   });
 
+  it('画板题目：右侧题目面板 + 左侧以 Excalidraw 编辑器打开（不落文本编辑器）', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    const controller = new PracticeController(ctx as any, storage, state, {
+      getSettings: () => ({
+        ...DEFAULT_FORGEQ_SETTINGS,
+        practice: {
+          ...DEFAULT_FORGEQ_SETTINGS.practice,
+          defaultProjectFile: 'excalidraw',
+        },
+      }),
+    });
+
+    await controller.open('q-code-1');
+
+    // 左侧作答：以画板方式打开，不使用 JSON 文本编辑器。
+    expect(openTextDocumentCalls).toHaveLength(0);
+    expect(showTextDocumentCalls).toHaveLength(0);
+    expect(executeCommand).toHaveBeenCalledWith(
+      'vscode.openWith',
+      expect.objectContaining({
+        path: expect.stringContaining('/q-code-1/answer.excalidraw'),
+      }),
+      'editor.excalidraw',
+      { viewColumn: 1, preview: false, preserveFocus: false },
+    );
+    // 右侧题目面板在第 2 列。
+    expect(createWebviewPanelCalls).toHaveLength(1);
+    expect(createWebviewPanelCalls[0]).toHaveProperty('column', 2);
+
+    controller.dispose();
+  });
+
+  it('切换到画板题目标签页时左侧画板自动切换且不抢右侧焦点', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    const controller = new PracticeController(ctx as any, storage, state, {
+      getSettings: () => ({
+        ...DEFAULT_FORGEQ_SETTINGS,
+        practice: {
+          ...DEFAULT_FORGEQ_SETTINGS.practice,
+          defaultProjectFile: 'excalidraw',
+        },
+      }),
+    });
+
+    await controller.open('q-code-1');
+    await controller.open('q-qa-1');
+
+    // 切回第一个题目标签页，触发左侧画板同步。
+    webviewPanels[1]!.active = false;
+    webviewPanels[0]!.active = true;
+    webviewPanels[0]!.onDidChangeViewStateHandler?.();
+
+    await vi.waitFor(() => {
+      // 同步时以 preserveFocus:true 打开 q-code-1 的画板，不抢走右侧题目焦点。
+      expect(executeCommand).toHaveBeenCalledWith(
+        'vscode.openWith',
+        expect.objectContaining({
+          path: expect.stringContaining('/q-code-1/answer.excalidraw'),
+        }),
+        'editor.excalidraw',
+        { viewColumn: 1, preview: false, preserveFocus: true },
+      );
+    });
+
+    controller.dispose();
+  });
+
   it('应用答案自动展开和笔记预览设置', async () => {
     const ctx = harness.createExtensionContext();
     (ctx as any).extensionUri = HarnessUri.file('/ext');

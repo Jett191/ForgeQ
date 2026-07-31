@@ -69,6 +69,9 @@ function createStorage(files: Array<{ relativePath: string; uri: ReturnType<type
 describe('QuestionProjectManager example', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks 只清空调用记录，不还原实现；复位 executeCommand 为默认 resolve，
+    // 以免某个用例把 vscode.openWith 设为 reject 后残留到后续用例。
+    mocks.executeCommand.mockImplementation(async () => undefined);
   });
 
   it('空项目首次打开时可选择 JSX，并在原生编辑器打开', async () => {
@@ -116,6 +119,7 @@ describe('QuestionProjectManager example', () => {
       'main.c',
       'main.py',
       'answer.md',
+      'answer.excalidraw',
     ]);
   });
 
@@ -272,5 +276,157 @@ describe('QuestionProjectManager example', () => {
       '# 我的旧答案',
     );
     expect(mocks.showQuickPick).not.toHaveBeenCalled();
+  });
+
+  it('选择画板预设时创建空白 answer.excalidraw 并以画板方式打开而非 JSON', async () => {
+    const storage = createStorage();
+    mocks.showQuickPick.mockImplementation(async (items: Array<{ fileName?: string }>) =>
+      items.find((item) => item.fileName === 'answer.excalidraw'),
+    );
+    const onFileOpened = vi.fn();
+    const manager = new QuestionProjectManager(storage as never, { onFileOpened });
+
+    await manager.open({ bankId: 'bank-1', question });
+
+    // 画板文件按空白创建（3 参数，不带内容），Excalidraw 编辑器会初始化为空场景。
+    expect(storage.userData.ensureQuestionProjectFile).toHaveBeenCalledWith(
+      'bank-1',
+      'q1',
+      'answer.excalidraw',
+    );
+    // 以自定义编辑器打开，绝不走 JSON 文本编辑器。
+    expect(mocks.executeCommand).toHaveBeenCalledWith(
+      'vscode.openWith',
+      expect.objectContaining({ path: '/projects/q1/answer.excalidraw' }),
+      'editor.excalidraw',
+      { viewColumn: 1, preview: false, preserveFocus: false },
+    );
+    expect(mocks.openTextDocument).not.toHaveBeenCalled();
+    expect(mocks.showTextDocument).not.toHaveBeenCalled();
+    expect(onFileOpened).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/projects/q1/answer.excalidraw' }),
+      'bank-1',
+      'q1',
+    );
+  });
+
+  it('代码题选择画板时不写入代码模板', async () => {
+    const storage = createStorage();
+    mocks.showQuickPick.mockImplementation(async (items: Array<{ fileName?: string }>) =>
+      items.find((item) => item.fileName === 'answer.excalidraw'),
+    );
+    const manager = new QuestionProjectManager(storage as never);
+
+    await manager.open({
+      bankId: 'bank-1',
+      question: { ...question, initialCode: 'export function solve() {}' },
+    });
+
+    expect(storage.userData.ensureQuestionProjectFile).toHaveBeenCalledWith(
+      'bank-1',
+      'q1',
+      'answer.excalidraw',
+    );
+    expect(storage.userData.ensureQuestionProjectFile).not.toHaveBeenCalledWith(
+      'bank-1',
+      'q1',
+      'answer.excalidraw',
+      'export function solve() {}',
+    );
+  });
+
+  it('默认文件设为 excalidraw 时直接创建画板，不弹选择框', async () => {
+    const storage = createStorage();
+    const manager = new QuestionProjectManager(storage as never, {
+      getSettings: () => ({
+        ...DEFAULT_FORGEQ_SETTINGS,
+        practice: {
+          ...DEFAULT_FORGEQ_SETTINGS.practice,
+          defaultProjectFile: 'excalidraw',
+        },
+      }),
+    });
+
+    await manager.open({ bankId: 'bank-1', question });
+
+    expect(mocks.showQuickPick).not.toHaveBeenCalled();
+    expect(storage.userData.ensureQuestionProjectFile).toHaveBeenCalledWith(
+      'bank-1',
+      'q1',
+      'answer.excalidraw',
+    );
+    expect(mocks.executeCommand).toHaveBeenCalledWith(
+      'vscode.openWith',
+      expect.objectContaining({ path: '/projects/q1/answer.excalidraw' }),
+      'editor.excalidraw',
+      { viewColumn: 1, preview: false, preserveFocus: false },
+    );
+  });
+
+  it('已有画板作答直接打开时保留右侧焦点（preserveFocus）', async () => {
+    const storage = createStorage([
+      { relativePath: 'answer.excalidraw', uri: fileUri('answer.excalidraw') },
+    ]);
+    const manager = new QuestionProjectManager(storage as never);
+
+    await manager.open(
+      { bankId: 'bank-1', question },
+      { directIfExists: true, preserveFocus: true },
+    );
+
+    expect(mocks.showQuickPick).not.toHaveBeenCalled();
+    expect(mocks.executeCommand).toHaveBeenCalledWith(
+      'vscode.openWith',
+      expect.objectContaining({ path: '/projects/q1/answer.excalidraw' }),
+      'editor.excalidraw',
+      { viewColumn: 1, preview: false, preserveFocus: true },
+    );
+  });
+
+  it('没有可处理 .excalidraw 的编辑器（openWith 失败）时提示安装，且不以 JSON 打开', async () => {
+    const storage = createStorage();
+    // 模拟未安装：跨宿主的 vscode.openWith 因找不到编辑器而失败。
+    mocks.executeCommand.mockImplementation(async (command: string) => {
+      if (command === 'vscode.openWith') throw new Error('no matching editor');
+      return undefined;
+    });
+    mocks.showWarningMessage.mockResolvedValue(undefined);
+    mocks.showQuickPick.mockImplementation(async (items: Array<{ fileName?: string }>) =>
+      items.find((item) => item.fileName === 'answer.excalidraw'),
+    );
+    const manager = new QuestionProjectManager(storage as never);
+
+    await manager.open({ bankId: 'bank-1', question });
+
+    // 仍先尝试以画板方式打开（跨宿主），失败后提示安装，而不是退回文本编辑器。
+    expect(mocks.executeCommand).toHaveBeenCalledWith(
+      'vscode.openWith',
+      expect.objectContaining({ path: '/projects/q1/answer.excalidraw' }),
+      'editor.excalidraw',
+      { viewColumn: 1, preview: false, preserveFocus: false },
+    );
+    expect(mocks.showWarningMessage).toHaveBeenCalled();
+    expect(mocks.openTextDocument).not.toHaveBeenCalled();
+    expect(mocks.showTextDocument).not.toHaveBeenCalled();
+  });
+
+  it('用户确认安装时触发扩展安装命令', async () => {
+    const storage = createStorage();
+    mocks.executeCommand.mockImplementation(async (command: string) => {
+      if (command === 'vscode.openWith') throw new Error('no matching editor');
+      return undefined;
+    });
+    mocks.showWarningMessage.mockResolvedValue('安装扩展');
+    mocks.showQuickPick.mockImplementation(async (items: Array<{ fileName?: string }>) =>
+      items.find((item) => item.fileName === 'answer.excalidraw'),
+    );
+    const manager = new QuestionProjectManager(storage as never);
+
+    await manager.open({ bankId: 'bank-1', question });
+
+    expect(mocks.executeCommand).toHaveBeenCalledWith(
+      'workbench.extensions.installExtension',
+      'pomdtr.excalidraw-editor',
+    );
   });
 });

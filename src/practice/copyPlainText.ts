@@ -1,5 +1,6 @@
 import type { LearningState } from '../types/learning.js';
 import type { Question } from '../types/question.js';
+import { EXCALIDRAW_ANSWER_PLACEHOLDER, isExcalidrawFile } from './excalidraw.js';
 import type { SharedAnswerFile } from './shareMarkdown.js';
 
 const difficultyLabels: Record<Question['difficulty'], string> = {
@@ -32,6 +33,11 @@ function appendAnswerFiles(lines: string[], files: ReadonlyArray<SharedAnswerFil
   }
 
   for (const file of files) {
+    // 画板作答只保留占位说明，避免把大量 Excalidraw JSON 复制进 AI 上下文。
+    if (isExcalidrawFile(file.relativePath)) {
+      lines.push(`--- 文件：${file.relativePath} ---`, EXCALIDRAW_ANSWER_PLACEHOLDER, '');
+      continue;
+    }
     lines.push(`--- 文件：${file.relativePath} ---`, file.content || '（空文件）', '');
   }
 }

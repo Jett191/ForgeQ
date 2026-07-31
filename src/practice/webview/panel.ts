@@ -21,6 +21,7 @@ import type { MasteryStatus, Question } from '../../types/question.js';
 import { deriveLearningState, toggleWrongFlag } from '../../domain/masteryRules.js';
 import { getOrDefault } from '../../storage/userDataStore.js';
 import type { InMemoryState, Storage } from '../../storage/storage.js';
+import { isExcalidrawFile } from '../excalidraw.js';
 import { deriveQuestionAnswer } from '../practiceFiles.js';
 import {
   buildQuestionMarkdown,
@@ -521,6 +522,12 @@ export class PracticePanel {
     const answers: SharedAnswerFile[] = [];
 
     for (const file of files) {
+      // 画板作答不读取原始 JSON：分享 / 复制时由构建器渲染占位说明即可。
+      if (isExcalidrawFile(file.relativePath)) {
+        answers.push({ relativePath: file.relativePath, content: '' });
+        continue;
+      }
+
       const openDocument = vscode.workspace.textDocuments.find(
         (document) => document.uri.toString() === file.uri.toString(),
       );

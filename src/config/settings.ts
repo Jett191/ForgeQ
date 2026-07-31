@@ -11,7 +11,8 @@ export type DefaultProjectFile =
   | 'go'
   | 'c'
   | 'python'
-  | 'markdown';
+  | 'markdown'
+  | 'excalidraw';
 
 export type NoteOpenMode = 'editor' | 'preview';
 

@@ -1,4 +1,5 @@
 import type { Question } from '../types/question.js';
+import { EXCALIDRAW_ANSWER_PLACEHOLDER, isExcalidrawFile } from './excalidraw.js';
 import { deriveQuestionAnswer } from './practiceFiles.js';
 
 export interface SharedAnswerFile {
@@ -46,6 +47,11 @@ function userAnswerLines(files: ReadonlyArray<SharedAnswerFile>): string[] {
 
   for (const file of files) {
     lines.push(`### ${file.relativePath}`, '');
+    // 画板作答只写一句占位说明，不内联体积庞大的 Excalidraw JSON。
+    if (isExcalidrawFile(file.relativePath)) {
+      lines.push(EXCALIDRAW_ANSWER_PLACEHOLDER, '');
+      continue;
+    }
     if (!file.content.trim()) {
       lines.push('（空文件）', '');
       continue;

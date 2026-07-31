@@ -12,6 +12,11 @@ import {
 import type { Storage } from '../storage/storage.js';
 import type { QuestionProjectFile } from '../storage/userDataStore.js';
 import type { Question } from '../types/question.js';
+import {
+  EXCALIDRAW_EDITOR_VIEW_TYPE,
+  EXCALIDRAW_EXTENSION_ID,
+  isExcalidrawFile,
+} from './excalidraw.js';
 
 interface ProjectPickItem extends vscode.QuickPickItem {
   action: 'file' | 'new' | 'terminal' | 'folder';
@@ -50,6 +55,7 @@ const PRESET_FILES: ReadonlyArray<{ label: string; description: string; fileName
   { label: '$(file-code) C 文件', description: '创建 main.c', fileName: 'main.c' },
   { label: '$(file-code) Python 文件', description: '创建 main.py', fileName: 'main.py' },
   { label: '$(markdown) Markdown 文件', description: '创建 answer.md', fileName: 'answer.md' },
+  { label: '$(pencil) 画板（Excalidraw）', description: '创建 answer.excalidraw', fileName: 'answer.excalidraw' },
 ];
 
 /**
@@ -233,7 +239,9 @@ export class QuestionProjectManager {
     });
     if (!fileName) return;
 
-    const initialContent = useQuestionTemplate ? this.initialContent(context.question) : '';
+    const initialContent = useQuestionTemplate
+      ? this.initialContentFor(fileName, context.question)
+      : '';
     const uri = initialContent.length > 0
       ? await this.storage.userData.ensureQuestionProjectFile(
           context.bankId,
@@ -253,7 +261,7 @@ export class QuestionProjectManager {
     context: QuestionProjectContext,
     fileName: string,
   ): Promise<void> {
-    const initialContent = this.initialContent(context.question);
+    const initialContent = this.initialContentFor(fileName, context.question);
     const uri = initialContent.length > 0
       ? await this.storage.userData.ensureQuestionProjectFile(
           context.bankId,
@@ -274,6 +282,17 @@ export class QuestionProjectManager {
       return '';
     }
     return question.initialCode ?? question.codeTemplate ?? '';
+  }
+
+  /**
+   * 计算某个作答文件的初始内容。画板文件始终从空白开始（Excalidraw 编辑器会把
+   * 空文件初始化为空场景），不写入题目的代码模板；其余文件沿用 `initialContent`。
+   */
+  private initialContentFor(fileName: string, question: Question): string {
+    if (isExcalidrawFile(fileName)) {
+      return '';
+    }
+    return this.initialContent(question);
   }
 
   private settings(): ForgeQSettings {
@@ -332,12 +351,60 @@ export class QuestionProjectManager {
     preserveFocus = false,
   ): Promise<void> {
     this.options.onFileOpened?.(uri, bankId, qid);
+    // 画板作答走自定义编辑器，以手绘画板方式打开，绝不退回 JSON 文本编辑器。
+    if (isExcalidrawFile(uri.path)) {
+      await this.openExcalidrawFile(uri, preserveFocus);
+      return;
+    }
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc, {
       viewColumn: vscode.ViewColumn.One,
       preview: false,
       preserveFocus,
     });
+  }
+
+  /**
+   * 以 Excalidraw 画板方式在左侧列打开作答文件。
+   *
+   * 关键：**不**用 `vscode.extensions` 预检是否安装。Excalidraw 是 web-capable 扩展，
+   * VS Code 常把它放到「Web Worker 扩展宿主」运行；而 ForgeQ 运行在「Node 本地扩展
+   * 宿主」。`vscode.extensions.all` / `getExtension` 只能看到**同一个宿主**里的扩展，
+   * 因此看不到它 —— 这正是「明明装了、手动能打开 .excalidraw 画板，预检却误报未安装」
+   * 的根因。
+   *
+   * 而 `vscode.openWith` 是 VS Code 内置命令，会**跨扩展宿主**解析编辑器，能正确命中。
+   * 因此这里直接乐观打开：成功即画板；仅当没有任何编辑器能处理该 viewType（通常即
+   * 未安装扩展）导致命令 reject 时，才提示安装，绝不退回 JSON 文本编辑器。
+   * `preserveFocus` 透传，满足「切换题目标签时左侧画板自动切换但不抢走右侧焦点」。
+   */
+  private async openExcalidrawFile(uri: vscode.Uri, preserveFocus: boolean): Promise<void> {
+    try {
+      await vscode.commands.executeCommand('vscode.openWith', uri, EXCALIDRAW_EDITOR_VIEW_TYPE, {
+        viewColumn: vscode.ViewColumn.One,
+        preview: false,
+        preserveFocus,
+      });
+    } catch (error) {
+      console.warn('[ForgeQ] 以 Excalidraw 画板方式打开失败（通常是未安装扩展）：', error);
+      await this.promptInstallExcalidrawEditor();
+    }
+  }
+
+  /** 提示用户安装 Excalidraw 编辑器扩展，并在确认后触发安装。 */
+  private async promptInstallExcalidrawEditor(): Promise<void> {
+    const install = '安装扩展';
+    const choice = await vscode.window.showWarningMessage(
+      '画板作答需要 Excalidraw 编辑器扩展（pomdtr.excalidraw-editor）。请安装后重试；'
+        + '如果刚安装，可能需要重新启动扩展开发宿主（重新按 F5）。',
+      install,
+    );
+    if (choice === install) {
+      await vscode.commands.executeCommand(
+        'workbench.extensions.installExtension',
+        EXCALIDRAW_EXTENSION_ID,
+      );
+    }
   }
 }
 
@@ -351,6 +418,7 @@ const CONFIGURED_FILE_NAMES: Readonly<Record<Exclude<DefaultProjectFile, 'ask' |
   c: 'main.c',
   python: 'main.py',
   markdown: 'answer.md',
+  excalidraw: 'answer.excalidraw',
 };
 
 function defaultFileName(setting: DefaultProjectFile, question: Question): string | undefined {
@@ -423,3 +491,4 @@ function legacyCodeExtension(language: string | undefined): string {
       return '.txt';
   }
 }
+

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { EXCALIDRAW_ANSWER_PLACEHOLDER } from '../../src/practice/excalidraw.js';
 import {
   buildQuestionMarkdown,
   questionMarkdownFileName,
@@ -61,6 +62,21 @@ describe('buildQuestionMarkdown', () => {
     ]);
 
     expect(markdown).toContain('````markdown\n```js\nconst answer = 1;\n```\n````');
+  });
+
+  it('画板作答只写占位说明，不内联 Excalidraw JSON', () => {
+    const excalidrawJson = JSON.stringify({
+      type: 'excalidraw',
+      elements: [{ id: 'a', type: 'rectangle' }],
+    });
+    const markdown = buildQuestionMarkdown(QUESTION, [
+      { relativePath: 'answer.excalidraw', content: excalidrawJson },
+    ]);
+
+    expect(markdown).toContain('### answer.excalidraw');
+    expect(markdown).toContain(EXCALIDRAW_ANSWER_PLACEHOLDER);
+    expect(markdown).not.toContain('"elements"');
+    expect(markdown).not.toContain(excalidrawJson);
   });
 });
 

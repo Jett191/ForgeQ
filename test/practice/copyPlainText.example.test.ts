@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildQuestionPlainText } from '../../src/practice/copyPlainText.js';
+import { EXCALIDRAW_ANSWER_PLACEHOLDER } from '../../src/practice/excalidraw.js';
 import type { LearningState } from '../../src/types/learning.js';
 import type { CodeQuestion } from '../../src/types/question.js';
 
@@ -65,6 +66,25 @@ describe('buildQuestionPlainText', () => {
     expect(text).toContain('【我的答案】\n（暂无作答文件）');
     expect(text).toContain('【我的笔记】\n（无）');
     expect(text).toContain('最近练习时间：（无）');
+  });
+
+  it('画板作答只保留占位说明，不复制 Excalidraw JSON', () => {
+    const excalidrawJson = JSON.stringify({
+      type: 'excalidraw',
+      elements: [{ id: 'a', type: 'rectangle' }],
+    });
+    const text = buildQuestionPlainText(
+      QUESTION,
+      [{ relativePath: 'answer.excalidraw', content: excalidrawJson }],
+      LEARNING,
+      undefined,
+      { includeReferenceAnswer: false, includeRawQuestionJson: false },
+    );
+
+    expect(text).toContain('--- 文件：answer.excalidraw ---');
+    expect(text).toContain(EXCALIDRAW_ANSWER_PLACEHOLDER);
+    expect(text).not.toContain('"elements"');
+    expect(text).not.toContain(excalidrawJson);
   });
 
   it('可按用户设置省略参考答案和原始 JSON', () => {
