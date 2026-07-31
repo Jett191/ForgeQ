@@ -16,6 +16,7 @@ import {
 } from '../config/settings.js';
 import type { InMemoryState, Storage } from '../storage/storage.js';
 import { getOrDefault } from '../storage/userDataStore.js';
+import type { Question } from '../types/question.js';
 import { QuestionProjectManager } from './questionProjectManager.js';
 import { PracticePanel } from './webview/panel.js';
 
@@ -48,6 +49,11 @@ export class PracticeController {
   private readonly uriBindings = new Map<string, OpenDocumentBinding>();
   /** Tracks whole project roots so files created later in Explorer are also recognised. */
   private readonly projectBindings = new Map<string, OpenDocumentBinding>();
+  /** The question currently shown in the active practice panel. */
+  private activePanelKey: string | undefined;
+  /** Serialises panel-driven file reveals so the latest tab switch wins. */
+  private panelSyncQueue: Promise<void> = Promise.resolve();
+  private panelSyncVersion = 0;
 
   constructor(
     private readonly ctx: vscode.ExtensionContext,
@@ -75,6 +81,9 @@ export class PracticeController {
       onOpenNote: async (bankId, qid, learning, mode) => {
         await this.openNote(bankId, qid, learning, mode);
       },
+      onDidBecomeActive: (bankId, qid, question, learning) => {
+        this.syncAnswerFileForActivePanel(bankId, qid, question, learning);
+      },
       ...(options.getSettings !== undefined ? { getSettings: options.getSettings } : {}),
       ...(options.onLearningChanged !== undefined
         ? { onLearningChanged: options.onLearningChanged }
@@ -101,6 +110,8 @@ export class PracticeController {
     const question = bank.questions.find((q) => q.id === qid);
     if (!question) return;
 
+    this.activePanelKey = this.questionKey(bankId, qid);
+    this.panelSyncVersion += 1;
     if (this.settings().practice.openAnswerFileOnQuestionOpen) {
       this.bindProject(bankId, qid, learning);
       await this.projectManager.open({ bankId, question }, { directIfExists: true });
@@ -162,6 +173,8 @@ export class PracticeController {
    * Dispose all resources.
    */
   dispose(): void {
+    this.activePanelKey = undefined;
+    this.panelSyncVersion += 1;
     this.saveSubscription.dispose();
     this.changeSubscription.dispose();
     this.panel.disposeAll();
@@ -171,6 +184,48 @@ export class PracticeController {
     this.debounceTimers.clear();
     this.uriBindings.clear();
     this.projectBindings.clear();
+  }
+
+  /**
+   * Keep the left answer editor aligned when the user changes the active question tab
+   * directly, which does not execute the openQuestion command again.
+   */
+  private syncAnswerFileForActivePanel(
+    bankId: string,
+    qid: string,
+    question: Question,
+    learning: Map<string, import('../types/learning.js').LearningState>,
+  ): void {
+    const key = this.questionKey(bankId, qid);
+    if (this.activePanelKey === key) return;
+
+    this.activePanelKey = key;
+    const version = ++this.panelSyncVersion;
+    if (!this.settings().practice.openAnswerFileOnQuestionOpen) return;
+
+    this.panelSyncQueue = this.panelSyncQueue
+      .then(async () => {
+        if (
+          version !== this.panelSyncVersion ||
+          this.activePanelKey !== key ||
+          !this.settings().practice.openAnswerFileOnQuestionOpen ||
+          !this.storage.getCurrentMeta().banks.some((bank) => bank.id === bankId)
+        ) {
+          return;
+        }
+        this.bindProject(bankId, qid, learning);
+        await this.projectManager.open(
+          { bankId, question },
+          { directIfExists: true, preserveFocus: true },
+        );
+      })
+      .catch((error: unknown) => {
+        console.error('[PracticeController] failed to sync the active question answer file:', error);
+      });
+  }
+
+  private questionKey(bankId: string, qid: string): string {
+    return JSON.stringify([bankId, qid]);
   }
 
   private bindProject(

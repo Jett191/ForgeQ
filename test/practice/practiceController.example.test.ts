@@ -15,6 +15,10 @@ const mockPostMessage = vi.fn();
 const changeTextDocumentHandlers: Array<(event: { document: { uri: unknown } }) => void> = [];
 const saveTextDocumentHandlers: Array<(document: { uri: unknown; getText: () => string }) => void> = [];
 const webviewMessageHandlers: Array<(message: unknown) => Promise<void>> = [];
+const webviewPanels: Array<{
+  active: boolean;
+  onDidChangeViewStateHandler?: () => void;
+}> = [];
 
 const { harness, showInformationMessage, showErrorMessage, executeCommand } = vi.hoisted(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -53,7 +57,16 @@ vi.mock('vscode', () => {
       createWebviewPanel: (viewType: string, title: string, column: unknown, opts: unknown) => {
         layoutCallOrder.push('question');
         createWebviewPanelCalls.push({ viewType, title, column, opts });
-        return {
+        const panel: {
+          active: boolean;
+          onDidChangeViewStateHandler?: () => void;
+          webview: unknown;
+          onDidDispose: ReturnType<typeof vi.fn>;
+          onDidChangeViewState: ReturnType<typeof vi.fn>;
+          reveal: ReturnType<typeof vi.fn>;
+          dispose: ReturnType<typeof vi.fn>;
+        } = {
+          active: true,
           webview: {
             html: '',
             onDidReceiveMessage: vi.fn((handler: (message: unknown) => Promise<void>) => {
@@ -65,9 +78,15 @@ vi.mock('vscode', () => {
             cspSource: 'https://file+.vscode-resource.vscode-cdn.net',
           },
           onDidDispose: vi.fn(),
+          onDidChangeViewState: vi.fn((handler: () => void) => {
+            panel.onDidChangeViewStateHandler = handler;
+            return { dispose: vi.fn() };
+          }),
           reveal: vi.fn(),
           dispose: vi.fn(),
         };
+        webviewPanels.push(panel);
+        return panel;
       },
     },
     workspace: {
@@ -146,6 +165,7 @@ describe('PracticeController open(qid)', () => {
     changeTextDocumentHandlers.length = 0;
     saveTextDocumentHandlers.length = 0;
     webviewMessageHandlers.length = 0;
+    webviewPanels.length = 0;
     mockPostMessage.mockClear();
     executeCommand.mockClear();
     showInformationMessage.mockClear();
@@ -212,6 +232,38 @@ describe('PracticeController open(qid)', () => {
     // WebviewPanel created with QA title
     expect(createWebviewPanelCalls.length).toBe(1);
     expect(createWebviewPanelCalls[0]).toHaveProperty('title', 'What is closure?');
+
+    controller.dispose();
+  });
+
+  it('切换已打开的题目标签页时自动同步左侧作答文件', async () => {
+    const ctx = harness.createExtensionContext();
+    (ctx as any).extensionUri = HarnessUri.file('/ext');
+    const storage = await Storage.create(ctx as any);
+    await storage.bootstrap();
+    await storage.installBank(BANK);
+    const state = await storage.bootstrap();
+    const controller = new PracticeController(ctx as any, storage, state);
+
+    await controller.open('q-code-1');
+    await controller.open('q-qa-1');
+    expect(openTextDocumentCalls).toHaveLength(2);
+
+    webviewPanels[1]!.active = false;
+    webviewPanels[0]!.active = true;
+    webviewPanels[0]!.onDidChangeViewStateHandler?.();
+
+    await vi.waitFor(() => {
+      expect(openTextDocumentCalls).toHaveLength(3);
+    });
+    expect(openTextDocumentCalls[2]).toEqual(
+      expect.objectContaining({ path: expect.stringContaining('/q-code-1/') }),
+    );
+    expect(showTextDocumentCalls[2]).toHaveProperty('column', {
+      viewColumn: 1,
+      preview: false,
+      preserveFocus: true,
+    });
 
     controller.dispose();
   });

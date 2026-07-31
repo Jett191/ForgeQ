@@ -36,6 +36,8 @@ export interface QuestionProjectManagerOptions {
 export interface QuestionProjectOpenOptions {
   /** Existing answers open immediately; project-toolbar actions can still request the full menu. */
   directIfExists?: boolean;
+  /** Keep the current editor focused while revealing the answer in the left column. */
+  preserveFocus?: boolean;
 }
 
 const PRESET_FILES: ReadonlyArray<{ label: string; description: string; fileName: string }> = [
@@ -69,7 +71,7 @@ export class QuestionProjectManager {
 
     const migrated = await this.migrateLegacyAnswers(bankId, question);
     if (migrated) {
-      await this.openFile(migrated, bankId, qid);
+      await this.openFile(migrated, bankId, qid, openOptions.preserveFocus);
       return;
     }
 
@@ -80,7 +82,12 @@ export class QuestionProjectManager {
     }
 
     if (openOptions.directIfExists) {
-      await this.openFile(this.primaryAnswerFile(files).uri, bankId, qid);
+      await this.openFile(
+        this.primaryAnswerFile(files).uri,
+        bankId,
+        qid,
+        openOptions.preserveFocus,
+      );
       return;
     }
 
@@ -322,13 +329,14 @@ export class QuestionProjectManager {
     uri: vscode.Uri,
     bankId: string,
     qid: string,
+    preserveFocus = false,
   ): Promise<void> {
     this.options.onFileOpened?.(uri, bankId, qid);
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc, {
       viewColumn: vscode.ViewColumn.One,
       preview: false,
-      preserveFocus: false,
+      preserveFocus,
     });
   }
 }

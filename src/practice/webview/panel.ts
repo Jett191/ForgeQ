@@ -53,6 +53,12 @@ export interface PanelDeps {
     learning: Map<string, LearningState>,
     mode: NoteOpenMode,
   ) => Promise<void>;
+  onDidBecomeActive?: (
+    bankId: string,
+    qid: string,
+    question: Question,
+    learning: Map<string, LearningState>,
+  ) => void;
   getSettings?: () => ForgeQSettings;
 }
 
@@ -117,6 +123,16 @@ export class PracticePanel {
 
     panel.onDidDispose(
       () => this.disposeInstance(bankId, qid),
+      undefined,
+      disposables,
+    );
+
+    panel.onDidChangeViewState(
+      () => {
+        if (panel.active) {
+          this.deps.onDidBecomeActive?.(bankId, qid, question, learning);
+        }
+      },
       undefined,
       disposables,
     );

@@ -32,6 +32,7 @@ vi.mock('vscode', () => ({
         postMessage: mocks.postMessage,
       },
       onDidDispose: vi.fn(),
+      onDidChangeViewState: vi.fn(),
       reveal: vi.fn(),
       dispose: vi.fn(),
     }),
