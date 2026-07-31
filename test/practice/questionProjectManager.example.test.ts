@@ -59,6 +59,7 @@ function createStorage(files: Array<{ relativePath: string; uri: ReturnType<type
   return {
     userData: {
       ensureQuestionProject: vi.fn(async () => root),
+      getQuestionProjectUri: vi.fn(() => root),
       listQuestionProjectFiles: vi.fn(async () => files),
       ensureQuestionProjectFile: vi.fn(async (_bankId, _qid, path, _init?: string) => fileUri(path)),
       readPracticeContent: vi.fn(async () => undefined),
@@ -89,6 +90,10 @@ describe('QuestionProjectManager example', () => {
       'q1',
       'App.jsx',
     );
+    expect(mocks.updateWorkspaceFolders).toHaveBeenCalledWith(0, 0, {
+      uri: root,
+      name: '练习：模块练习',
+    });
     expect(onFileOpened).toHaveBeenCalledWith(expect.anything(), 'bank-1', 'q1');
     expect(mocks.openTextDocument).toHaveBeenCalledTimes(1);
     expect(mocks.showTextDocument).toHaveBeenCalledWith(expect.anything(), {
@@ -236,6 +241,10 @@ describe('QuestionProjectManager example', () => {
       'q1',
       'src/components/App.jsx',
     );
+    expect(mocks.updateWorkspaceFolders).toHaveBeenCalledWith(0, 0, {
+      uri: root,
+      name: '练习：模块练习',
+    });
   });
 
   it('从题目列表打开已有作答时跳过选项并直接打开主要回答文件', async () => {
@@ -294,6 +303,10 @@ describe('QuestionProjectManager example', () => {
       'q1',
       'answer.excalidraw',
     );
+    expect(mocks.updateWorkspaceFolders).toHaveBeenCalledWith(0, 0, {
+      uri: root,
+      name: '练习：模块练习',
+    });
     // 以自定义编辑器打开，绝不走 JSON 文本编辑器。
     expect(mocks.executeCommand).toHaveBeenCalledWith(
       'vscode.openWith',

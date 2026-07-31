@@ -199,8 +199,9 @@ export class QuestionProjectManager {
         context.question.id,
         'index.js',
       );
-      await this.openFile(uri, context.bankId, context.question.id);
+      // 文件创建成功即加入工作区：即使后续编辑器打开失败，资源管理器仍能看到项目。
       this.addProjectToWorkspace(root, context.question);
+      await this.openFile(uri, context.bankId, context.question.id);
       return;
     }
     if (picked.action === 'custom') {
@@ -225,6 +226,15 @@ export class QuestionProjectManager {
     if (!added) {
       void vscode.window.showWarningMessage('无法把题目项目添加到当前工作区，请稍后重试。');
     }
+  }
+
+  /** 把当前题目的项目目录加入工作区，使其显示在 VS Code 资源管理器。 */
+  private revealProjectInExplorer(context: QuestionProjectContext): void {
+    const root = this.storage.userData.getQuestionProjectUri(
+      context.bankId,
+      context.question.id,
+    );
+    this.addProjectToWorkspace(root, context.question);
   }
 
   private async createCustomFile(
@@ -254,6 +264,7 @@ export class QuestionProjectManager {
           context.question.id,
           fileName,
         );
+    this.revealProjectInExplorer(context);
     await this.openFile(uri, context.bankId, context.question.id);
   }
 
@@ -274,6 +285,7 @@ export class QuestionProjectManager {
           context.question.id,
           fileName,
         );
+    this.revealProjectInExplorer(context);
     await this.openFile(uri, context.bankId, context.question.id);
   }
 

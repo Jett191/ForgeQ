@@ -2,7 +2,7 @@
   "name": "forgeq",
   "displayName": "ForgeQ",
   "description": "在 VS Code 里导入、练习和复习自己的题库",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "publisher": "Jett191",
   "license": "MIT",
   "private": true,
